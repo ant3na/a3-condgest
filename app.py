@@ -1438,11 +1438,9 @@ def pagina_configuracoes():
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
                             with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
-                                try:
+                                try:   
                                     import time
-                                    from models import Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem
-                                    
-                                    # Em vez de destruir as tabelas (DROP), apagamos apenas os dados lá dentro
+                                   # Em vez de destruir as tabelas (DROP), apagamos apenas os dados lá dentro
                                     session.query(VotoSondagem).delete()
                                     session.query(Sondagem).delete()
                                     session.query(Assembleia).delete()
