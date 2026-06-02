@@ -1440,20 +1440,23 @@ def pagina_configuracoes():
                             with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
                                 try:
                                     from db import engine, init_db
-                                    from models import Base
+                                    import sqlalchemy as sa
                                     import time
                                     
-                                    # 1. Fechar a sessão atual para libertar a tabela
+                                    # 1. Fechar a sessão atual
                                     session.close()
                                     
-                                    # 2. Forçar a limpeza das conexões fantasmas (Evita o Timeout)
+                                    # 2. Purgar o pool de conexões do Python
                                     engine.dispose()
                                     
-                                    # 3. Apagar todas as tabelas e recriá-las na hora
-                                    Base.metadata.drop_all(bind=engine)
-                                    Base.metadata.create_all(bind=engine)
+                                    # 3. Executar uma limpeza BRUTA por SQL direto em Cascata (Força a remoção de tudo)
+                                    with engine.connect() as conn:
+                                        tabelas = ["votos_sondagem", "sondagens", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "recibos", "quotas", "utilizadores", "moradores"]
+                                        for tabela in tabelas:
+                                            conn.execute(sa.text(f"DROP TABLE IF EXISTS {tabela} CASCADE;"))
+                                        conn.commit()
                                     
-                                    # 4. Voltar a correr a função que cria as tabelas e garante o Admin básico
+                                    # 4. Voltar a correr a função que recria as tabelas estruturais e o Admin do zero
                                     init_db()
                                     
                                     st.success("✔️ Base de dados reiniciada com sucesso! (A terminar sessão...)")
