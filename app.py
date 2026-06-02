@@ -1401,23 +1401,64 @@ def pagina_configuracoes():
                         
         with tab_seguranca:
             with st.container(border=True):
-                st.subheader("Cópia de Segurança (Backup)")
-                st.write("Descarregue uma cópia completa da base de dados atual. Mantenha este ficheiro num local seguro e atualizado.")
-                if os.path.exists("condominio.db"):
-                    with open("condominio.db", "rb") as db_file:
-                        st.download_button(
-                            label=":material/download: Descarregar Base de Dados (condominio.db)",
-                            data=db_file,
-                            file_name=f"backup_condominio_{date.today().strftime('%Y%m%d')}.db",
-                            mime="application/octet-stream",
-                            type="primary",
-                            width="stretch"
-                        )
+                st.subheader(":material/cloud_download: Cópia de Segurança (Backup Cloud)")
+                st.write("Como a base de dados está alojada na Cloud (Supabase), os dados estão protegidos pelo servidor. Aqui pode exportar as tabelas principais para o seu computador (abre no Excel).")
+                
+                col_b1, col_b2 = st.columns(2)
+                
+                # 1. Gerar CSV de Moradores
+                df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
+                if not df_backup_cond.empty:
+                    # utf-8-sig garante que os acentos abrem bem no Excel
+                    csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode('utf-8-sig')
+                    col_b1.download_button("📥 Descarregar Moradores (Excel)", data=csv_cond, file_name=f"Backup_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else:
-                    st.warning("Ficheiro de base de dados não encontrado.")
+                    col_b1.info("Sem dados de moradores para backup.")
+                    
+                # 2. Gerar CSV Financeiro (Extrato total)
+                df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
+                if not df_backup_fin.empty:
+                    csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode('utf-8-sig')
+                    col_b2.download_button("📥 Descarregar Contas (Excel)", data=csv_fin, file_name=f"Backup_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                else:
+                    col_b2.info("Sem dados financeiros para backup.")
             
-            st.info("💡 **Atenção:** As credenciais de email para envio de faturas devem agora ser obrigatoriamente configuradas no ficheiro oculto `.streamlit/secrets.toml` por motivos de segurança.")
-    else: st.info("O Modo Leitura está ativo. As configurações estão bloqueadas para visualização.")
+            st.info("💡 **Atenção:** As credenciais de email para envio de faturas devem agora ser configuradas nas Definições Avançadas (Secrets) do Streamlit Cloud.")
+            
+            # ==========================================
+            # ZONA DO BOTÃO DE RESET (Só para Admin)
+            # ==========================================
+            if st.session_state.perfil == "Admin":
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    st.subheader("🚨 Zona de Perigo (Reset de Dados)")
+                    st.warning("Atenção: Esta operação irá apagar permanentemente todos os moradores, recibos, despesas e configurações. A base de dados será recriada totalmente vazia.")
+                    
+                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero mesmo apagar a base de dados.")
+                    
+                    if confirmar_reset:
+                        if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
+                            with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
+                                try:
+                                    from db import engine
+                                    from models import Base
+                                    import time
+                                    
+                                    # O SQLAlchemy apaga de forma segura todas as tabelas na Cloud
+                                    Base.metadata.drop_all(bind=engine)
+                                    # Volta a criá-las em branco
+                                    Base.metadata.create_all(bind=engine)
+                                    
+                                    st.success("✔️ Base de dados reiniciada com sucesso! (A terminar sessão...)")
+                                    time.sleep(3)
+                                    
+                                    # Fazemos logout automático para que o sistema volte a criar a conta 'admin' ao arrancar
+                                    st.session_state.logado = False
+                                    st.session_state.username = None
+                                    st.rerun()
+                                    
+                                except Exception as e:
+                                    st.error(f"Erro técnico ao tentar fazer o reset: {e}")
 
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
