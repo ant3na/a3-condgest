@@ -1439,36 +1439,36 @@ def pagina_configuracoes():
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
                             with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
                                 try:
-                                    from db import engine, init_db
-                                    import sqlalchemy as sa
                                     import time
+                                    from models import Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem
                                     
-                                    # 1. Fechar a sessão atual
-                                    session.close()
+                                    # Em vez de destruir as tabelas (DROP), apagamos apenas os dados lá dentro
+                                    session.query(VotoSondagem).delete()
+                                    session.query(Sondagem).delete()
+                                    session.query(Assembleia).delete()
+                                    session.query(Ocorrencia).delete()
+                                    session.query(Fornecedor).delete()
+                                    session.query(Documento).delete()
+                                    session.query(Movimento).delete()
+                                    session.query(Orcamento).delete()
+                                    session.query(Quota).delete()
+                                    session.query(Utilizador).delete()
+                                    session.query(Condomino).delete()
                                     
-                                    # 2. Purgar o pool de conexões do Python
-                                    engine.dispose()
+                                    # Confirmar a eliminação definitiva no Supabase
+                                    session.commit()
                                     
-                                    # 3. Executar uma limpeza BRUTA por SQL direto em Cascata (Força a remoção de tudo)
-                                    with engine.connect() as conn:
-                                        tabelas = ["votos_sondagem", "sondagens", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "recibos", "quotas", "utilizadores", "moradores"]
-                                        for tabela in tabelas:
-                                            conn.execute(sa.text(f"DROP TABLE IF EXISTS {tabela} CASCADE;"))
-                                        conn.commit()
-                                    
-                                    # 4. Voltar a correr a função que recria as tabelas estruturais e o Admin do zero
-                                    init_db()
-                                    
-                                    st.success("✔️ Base de dados reiniciada com sucesso! (A terminar sessão...)")
+                                    st.success("✔️ Todos os dados de teste foram limpos com sucesso! (A preparar sistema...)")
                                     time.sleep(2)
                                     
-                                    # Limpar estados e forçar recarregamento limpo
+                                    # Forçar logout para recriar o Admin limpo
                                     st.session_state.logado = False
                                     st.session_state.username = None
                                     st.rerun()
                                     
                                 except Exception as e:
-                                    st.error(f"Erro técnico ao tentar fazer o reset: {e}")
+                                    session.rollback()
+                                    st.error(f"Erro técnico ao tentar limpar os dados: {e}")
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
 # ==========================================
