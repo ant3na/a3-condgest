@@ -1469,7 +1469,6 @@ def pagina_configuracoes():
                                     
                                 except Exception as e:
                                     st.error(f"Erro técnico ao tentar fazer o reset: {e}")
-
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
 # ==========================================
