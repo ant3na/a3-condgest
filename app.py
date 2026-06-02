@@ -421,7 +421,7 @@ def configurar_sidebar():
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
     if os.path.exists("logo.png"):
         col1, col2, col3 = st.sidebar.columns([1, 2.5, 1])
-        with col2: st.image("logo.png", use_container_width=True)
+        with col2: st.image("logo.png", width="stretch")
     st.sidebar.title(":material/corporate_fare: A3.Cond.Gest")
     st.sidebar.markdown("---")
     
@@ -430,7 +430,7 @@ def configurar_sidebar():
         if st.session_state.modo_leitura:
             st.sidebar.caption(":material/visibility: MODO LEITURA")
         
-        if st.sidebar.button(":material/logout: Terminar Sessão", use_container_width=True):
+        if st.sidebar.button(":material/logout: Terminar Sessão", width="stretch"):
             st.session_state.logado = False
             st.session_state.username = None
             st.session_state.perfil = None
@@ -467,7 +467,7 @@ def pagina_login():
             with st.form("form_login"):
                 user = st.text_input("Utilizador")
                 pwd = st.text_input("Password", type="password")
-                if st.form_submit_button("Entrar", use_container_width=True):
+                if st.form_submit_button("Entrar", width="stretch"):
                     utilizador_db = session.query(Utilizador).filter_by(username=user.lower()).first()
                     if utilizador_db and check_password_hash(utilizador_db.password_hash, pwd):
                         st.session_state.logado = True
@@ -535,7 +535,7 @@ def pagina_dashboard_morador():
         quotas = session.query(Quota).filter_by(condomino_id=cond.id).order_by(Quota.mes_ano.desc()).all()
         if quotas:
             df_q = pd.DataFrame([{"Referência": q.mes_ano, "Valor": q.valor, "Estado": "🟢 Pago" if q.paga else "🔴 Em Dívida", "Data Pagamento": q.data_pagamento if q.paga else "-"} for q in quotas])
-            st.dataframe(df_q, use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
+            st.dataframe(df_q, width="stretch", hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
         else: st.info("Ainda não existem registos na sua conta.")
 
 def pagina_acessos():
@@ -549,7 +549,7 @@ def pagina_acessos():
         if conds:
             df_acessos = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Proprietário": c.nome, "Tem Acesso?": "✅ Sim" if session.query(Utilizador).filter_by(condomino_id=c.id).first() else "❌ Não", "Username": session.query(Utilizador).filter_by(condomino_id=c.id).first().username if session.query(Utilizador).filter_by(condomino_id=c.id).first() else "—"} for c in conds])
             with st.container(border=True):
-                ev_acesso = st.dataframe(df_acessos, use_container_width=True, hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+                ev_acesso = st.dataframe(df_acessos, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
             if ev_acesso.selection.rows:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -559,7 +559,7 @@ def pagina_acessos():
                     st.info(f":material/push_pin: A gerir acesso de: **{cond_sel.fracao} ({cond_sel.nome})**")
                     if not user_existente:
                         st.warning("Este morador ainda não tem acesso ao portal.")
-                        if st.button(":material/rocket_launch: Criar Utilizador", use_container_width=True):
+                        if st.button(":material/rocket_launch: Criar Utilizador", width="stretch"):
                             username_sugerido = formatar_username(cond_sel.nome)
                             sucesso, msg_toast = False, ""
                             
@@ -593,8 +593,8 @@ def pagina_acessos():
                             if sucesso: st.session_state.toast = (msg_toast, "✅"); st.rerun()
                     else:
                         c1, c2 = st.columns(2)
-                        if c1.button("Repor Password para 'mudar123'", use_container_width=True): user_existente.password_hash = generate_password_hash("mudar123"); session.commit(); st.session_state.toast = ("Reposta!", "✅"); st.rerun()
-                        if c2.button("Remover Acesso", use_container_width=True): session.delete(user_existente); session.commit(); st.session_state.toast = ("Removido.", "🗑️"); st.rerun()
+                        if c1.button("Repor Password para 'mudar123'", width="stretch"): user_existente.password_hash = generate_password_hash("mudar123"); session.commit(); st.session_state.toast = ("Reposta!", "✅"); st.rerun()
+                        if c2.button("Remover Acesso", width="stretch"): session.delete(user_existente); session.commit(); st.session_state.toast = ("Removido.", "🗑️"); st.rerun()
         else: st.info("Ainda não tem condóminos.")
 
     with tab_perms:
@@ -602,7 +602,7 @@ def pagina_acessos():
         if users:
             df_perms = pd.DataFrame([{"ID_User": u.id, "Fração": u.condomino.fracao if u.condomino else "N/A", "Username": u.username, "Leitura": "👁️ Ativo" if u.modo_leitura else "✏️ Não"} for u in users])
             with st.container(border=True):
-                ev_perms = st.dataframe(df_perms, use_container_width=True, hide_index=True, column_config={"ID_User": None}, on_select="rerun", selection_mode="single-row")
+                ev_perms = st.dataframe(df_perms, width="stretch", hide_index=True, column_config={"ID_User": None}, on_select="rerun", selection_mode="single-row")
             if ev_perms.selection.rows:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -633,7 +633,7 @@ def pagina_acessos():
                             val_forn = st.checkbox("Fornecedores", value=u_sel.perm_fornecedores, key=f"p_forn_{st.session_state.form_key}")
                             val_oco = st.checkbox("Ocorrências", value=u_sel.perm_ocorrencias, key=f"p_oco_{st.session_state.form_key}")
 
-                        if st.form_submit_button("Guardar Permissões Segmentadas", use_container_width=True):
+                        if st.form_submit_button("Guardar Permissões Segmentadas", width="stretch"):
                             u_sel.modo_leitura = val_leitura
                             u_sel.perm_download_docs = val_down
                             u_sel.perm_dashboard, u_sel.perm_condominos = val_dash, val_cond
@@ -678,7 +678,7 @@ def pagina_dashboard():
                     df_q = pd.DataFrame([{"Estado": "Pagas", "Valor": q.valor} if q.paga else {"Estado": "Em Dívida", "Valor": q.valor} for q in quotas_ano])
                     fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values='Valor', names='Estado', hole=0.4, color='Estado', color_discrete_map={'Pagas':'#2563eb', 'Em Dívida':'#ef4444'})
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig1, width="stretch", config={'displayModeBar': False})
                 else: st.info("Sem quotas geradas.")
 
         with c2:
@@ -691,7 +691,7 @@ def pagina_dashboard():
                     df_fin_grouped["Mês_Nome"] = df_fin_grouped["Mês"].map(meses_map)
                     fig2 = px.bar(df_fin_grouped, x='Mês_Nome', y='Valor', color='Tipo', barmode='group', color_discrete_map={'Receita':'#2563eb', 'Despesa':'#ef4444'}, text_auto='.2f')
                     fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig2, width="stretch", config={'displayModeBar': False})
                 else: st.info("Sem dados financeiros.")
 
     with tab_fracoes:
@@ -704,7 +704,7 @@ def pagina_dashboard():
                 df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
                 fig3 = px.bar(df_fracoes_grouped, x='Mês_Nome', y='Valor Pago', color='Fração/Condómino', barmode='group', text_auto='.2f')
                 fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig3, width="stretch", config={'displayModeBar': False})
             else: st.info("Sem pagamentos registados.")
 
 def pagina_condominos():
@@ -716,7 +716,7 @@ def pagina_condominos():
             st.write("Faça upload de um ficheiro CSV ou Excel contendo as seguintes colunas (exatamente com estes nomes): `Nome,Fração,NIF,Telefone,Email,Permilagem`.")
             ficheiro_import = st.file_uploader("Escolher ficheiro", type=["csv", "xlsx"], key=f"file_up_{st.session_state.form_key}")
             if ficheiro_import is not None:
-                if st.button("Processar Importação", use_container_width=True):
+                if st.button("Processar Importação", width="stretch"):
                     try:
                         if ficheiro_import.name.endswith('.csv'): 
                             try:
@@ -790,7 +790,7 @@ def pagina_condominos():
     if conds:
         with st.container(border=True):
             df_export = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Permilagem": c.permilagem, "Telefone": c.telefone, "Email": c.email} for c in conds])
-            evento = st.dataframe(df_export, use_container_width=True, hide_index=True, column_config={"ID": None, "Permilagem": st.column_config.NumberColumn("Permilagem (‰)", format="%.2f ‰")}, on_select="rerun", selection_mode="single-row")
+            evento = st.dataframe(df_export, width="stretch", hide_index=True, column_config={"ID": None, "Permilagem": st.column_config.NumberColumn("Permilagem (‰)", format="%.2f ‰")}, on_select="rerun", selection_mode="single-row")
         
         if evento.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
@@ -800,9 +800,9 @@ def pagina_condominos():
                 c_info, c_edit, c_del = st.columns([2, 1, 1])
                 c_info.info(f":material/push_pin: Selecionado: **{cond_obj.fracao} - {cond_obj.nome}**")
                 if not st.session_state.modo_leitura:
-                    if c_edit.button(":material/edit: Editar Fração", use_container_width=True):
+                    if c_edit.button(":material/edit: Editar Fração", width="stretch"):
                         st.session_state.edit_id = id_sel; st.session_state.edit_type = "cond"; st.session_state.form_key += 1; st.rerun()
-                    if c_del.button(":material/delete: Apagar Registo", use_container_width=True):
+                    if c_del.button(":material/delete: Apagar Registo", width="stretch"):
                         session.delete(cond_obj); session.commit(); st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
     else: st.info("Ainda não existem condóminos registados.")
 
@@ -830,13 +830,13 @@ def pagina_quotas():
             if not st.session_state.modo_leitura:
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button(f":material/bolt: Gerar Quotas Apenas de {mes_str}", use_container_width=True):
+                    if st.button(f":material/bolt: Gerar Quotas Apenas de {mes_str}", width="stretch"):
                         if len(condominos_sem_quota) > 0:
                             for c in condominos_sem_quota: session.add(Quota(condomino_id=c.id, mes_ano=mes_str, valor=valor_quota_padrao, paga=False))
                             session.commit(); st.session_state.toast = (f"Quotas de {mes_str} geradas!", "✅"); st.rerun()
                         else: st.info("Não há quotas em falta.")
                 with col2:
-                    if st.button(f":material/calendar_month: Gerar para Todo o Ano de {ano_sel}", use_container_width=True, type="primary"):
+                    if st.button(f":material/calendar_month: Gerar para Todo o Ano de {ano_sel}", width="stretch", type="primary"):
                         novas_quotas = 0
                         for c in condominos:
                             for m in range(1, 13):
@@ -860,7 +860,7 @@ def pagina_quotas():
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura and dividas:
             with st.expander(":material/forward_to_inbox: Enviar Avisos em Lote", expanded=False):
                 st.write("Notifique todos os condóminos com dívidas ativas num só clique.")
-                if st.button("Disparar Avisos para Todos os Devedores", use_container_width=True, type="primary"):
+                if st.button("Disparar Avisos para Todos os Devedores", width="stretch", type="primary"):
                     emails_enviados = 0
                     for d in dividas:
                         if d.condomino.email:
@@ -873,7 +873,7 @@ def pagina_quotas():
         if dividas:
             with st.container(border=True):
                 df_dividas = pd.DataFrame([{"ID": d.id, "Mês Ref": d.mes_ano, "Fração": d.condomino.fracao, "Nome": d.condomino.nome, "Valor": d.valor} for d in dividas])
-                evento_divida = st.dataframe(df_dividas, use_container_width=True, hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
+                evento_divida = st.dataframe(df_dividas, width="stretch", hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
             if evento_divida.selection.rows:
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
@@ -881,13 +881,13 @@ def pagina_quotas():
                     st.info(f":material/push_pin: Selecionado: **Fração {quota_obj.condomino.fracao}** ({quota_obj.mes_ano}) - **{quota_obj.valor:.2f} €**")
                     col_pagar, col_aviso = st.columns(2)
                     if not st.session_state.modo_leitura:
-                        if col_pagar.button(":material/done: Marcar como Paga", use_container_width=True):
+                        if col_pagar.button(":material/done: Marcar como Paga", width="stretch"):
                             quota_obj.paga = True; quota_obj.data_pagamento = hoje.strftime("%Y-%m-%d"); session.commit(); st.rerun()
                         if st.session_state.perfil == "Admin":
                             with col_aviso.popover(":material/mail: Enviar Aviso Individual"):
                                 corpo_email = f"Exmo(a) Sr(a) {quota_obj.condomino.nome},\n\nEncontra-se a pagamento a quota de {quota_obj.mes_ano} no valor de {quota_obj.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
                                 st.markdown(f"**Mensagem:**\n\n{corpo_email}")
-                                if st.button("Confirmar Envio", key=f"mail_aviso_{quota_obj.id}", use_container_width=True):
+                                if st.button("Confirmar Envio", key=f"mail_aviso_{quota_obj.id}", width="stretch"):
                                     if quota_obj.condomino.email:
                                         if enviar_email_real(quota_obj.condomino.email, f"Aviso de Pagamento - {quota_obj.mes_ano}", corpo_email): st.toast("Enviado!", icon="✅")
                                     else: st.error("Sem email registado.")
@@ -898,7 +898,7 @@ def pagina_quotas():
         if pagas:
             with st.container(border=True):
                 df_pagas = pd.DataFrame([{"Data": p.data_pagamento, "Referência": p.mes_ano, "Fração": p.condomino.fracao, "Nome": p.condomino.nome, "Valor": p.valor} for p in pagas])
-                st.dataframe(df_pagas, use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
+                st.dataframe(df_pagas, width="stretch", hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
 
 def pagina_financas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -962,17 +962,17 @@ def pagina_financas():
             st.markdown("<br>", unsafe_allow_html=True)
             if REPORTLAB_INSTALLED:
                 pdf_bytes = gerar_pdf_extrato(df_extrato, mes_sel, ano_sel, saldo_anterior)
-                if pdf_bytes: st.download_button(":material/picture_as_pdf: Exportar PDF (Mês)", data=pdf_bytes, file_name=f"Extrato_{mes_sel}_{ano_sel}.pdf", mime="application/pdf", use_container_width=True, type="secondary")
+                if pdf_bytes: st.download_button(":material/picture_as_pdf: Exportar PDF (Mês)", data=pdf_bytes, file_name=f"Extrato_{mes_sel}_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
         
         if movs or q_atual > 0:
             with st.container(border=True):
-                evento_fin = st.dataframe(df_extrato, use_container_width=True, hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
+                evento_fin = st.dataframe(df_extrato, width="stretch", hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
             if evento_fin.selection.rows and not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
                 id_mov = df_extrato.iloc[evento_fin.selection.rows[0]]["ID"]
                 if id_mov != "-": 
                     with st.container(border=True):
                         mov_obj = session.get(Movimento, int(id_mov))
-                        if st.button(f":material/delete: Apagar {mov_obj.descricao}", use_container_width=True): session.delete(mov_obj); session.commit(); st.rerun()
+                        if st.button(f":material/delete: Apagar {mov_obj.descricao}", width="stretch"): session.delete(mov_obj); session.commit(); st.rerun()
 
     with tab_ano:
         st.subheader(f"Resumo Financeiro Global - {ano_sel}")
@@ -1008,11 +1008,11 @@ def pagina_financas():
         if REPORTLAB_INSTALLED:
             pdf_bytes_anual = gerar_pdf_relatorio_anual(ano_sel, saldo_anterior_ano, q_atual_ano, rec_atual_ano, desp_atual_ano, df_desp_agrupadas)
             with col_pdf:
-                st.download_button(":material/picture_as_pdf: Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", use_container_width=True, type="secondary")
+                st.download_button(":material/picture_as_pdf: Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
             
             with col_mail:
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-                    if st.button(":material/forward_to_inbox: Enviar Relatório por Email a Todos", use_container_width=True, type="primary"):
+                    if st.button(":material/forward_to_inbox: Enviar Relatório por Email a Todos", width="stretch", type="primary"):
                         condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                         emails_enviados = 0
                         for c in condominos_com_email:
@@ -1027,7 +1027,7 @@ def pagina_financas():
         with st.container(border=True):
             st.write("**Detalhamento das Despesas do Ano:**")
             if not df_desp_agrupadas.empty:
-                st.dataframe(df_desp_agrupadas, use_container_width=True, hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor Total Pago no Ano (€)", format="%.2f €")})
+                st.dataframe(df_desp_agrupadas, width="stretch", hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor Total Pago no Ano (€)", format="%.2f €")})
             else:
                 st.info("Ainda não existem despesas registadas neste ano civil.")
 
@@ -1043,7 +1043,7 @@ def pagina_recibos():
         st.write(":material/touch_app: **Clique numa linha para gerar e visualizar o recibo de pagamento:**")
         with st.container(border=True):
             df_recibos = pd.DataFrame([{"ID": q.id, "Data Pagamento": q.data_pagamento, "Ref. Mensal": q.mes_ano, "Fração": q.condomino.fracao, "Nome": q.condomino.nome, "Valor": q.valor} for q in q_pagas])
-            evento_rec = st.dataframe(df_recibos, use_container_width=True, hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
+            evento_rec = st.dataframe(df_recibos, width="stretch", hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
         if evento_rec.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
@@ -1098,19 +1098,19 @@ def pagina_recibos():
                     st.write("#### :material/print: 1. Imprimir / Guardar PDF")
                     if REPORTLAB_INSTALLED:
                         pdf_bytes = gerar_pdf_recibo(q)
-                        st.download_button(":material/picture_as_pdf: Descarregar Recibo (PDF)", data=pdf_bytes, file_name=f"{nome_pdf}.pdf", mime="application/pdf", type="secondary", use_container_width=True)
+                        st.download_button(":material/picture_as_pdf: Descarregar Recibo (PDF)", data=pdf_bytes, file_name=f"{nome_pdf}.pdf", mime="application/pdf", type="secondary", width="stretch")
                     else: st.warning("⚠️ Instale o 'reportlab' no terminal para gerar PDFs.")
                 with col2:
                     st.write("#### :material/mail: 2. Enviar por Email")
                     if not st.session_state.modo_leitura:
                         if st.session_state.perfil == "Admin":
-                            if st.button(":material/send: Enviar Confirmação (Sem PDF)", use_container_width=True):
+                            if st.button(":material/send: Enviar Confirmação (Sem PDF)", width="stretch"):
                                 if q.condomino.email:
                                     corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos a receção do pagamento da quota referente a {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
                                     if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - Quota {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
                                 else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
-                                if st.button(":material/send_and_archive: Enviar Recibo com PDF Anexo", type="primary", use_container_width=True):
+                                if st.button(":material/send_and_archive: Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
                                     if q.condomino.email:
                                         corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo em formato PDF para os seus registos.\nA Administração."
                                         if enviar_email_real(q.condomino.email, f"Recibo de Pagamento - Quota {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado com sucesso!", icon="🎉")
@@ -1138,7 +1138,7 @@ def pagina_documentos():
     if docs:
         with st.container(border=True):
             df_docs = pd.DataFrame([{"ID": d.id, "Data": d.data_upload, "Categoria": d.categoria, "Nome": d.nome_ficheiro} for d in docs])
-            evento_doc = st.dataframe(df_docs, use_container_width=True, hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            evento_doc = st.dataframe(df_docs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento_doc.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1148,12 +1148,12 @@ def pagina_documentos():
                 col_info.info(f":material/push_pin: Selecionado: **{doc_obj.nome_ficheiro}**")
                 if st.session_state.perm_download_docs:
                     try:
-                        with open(doc_obj.caminho, "rb") as file: col_down.download_button(":material/download: Baixar", data=file, file_name=doc_obj.nome_ficheiro, use_container_width=True)
+                        with open(doc_obj.caminho, "rb") as file: col_down.download_button(":material/download: Baixar", data=file, file_name=doc_obj.nome_ficheiro, width="stretch")
                     except FileNotFoundError: col_down.error("Perdido.")
                 else: col_down.warning("🚫 Sem permissão")
                     
                 if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
-                    if col_del.button(":material/delete: Apagar", use_container_width=True):
+                    if col_del.button(":material/delete: Apagar", width="stretch"):
                         if os.path.exists(doc_obj.caminho): os.remove(doc_obj.caminho) 
                         session.delete(doc_obj); session.commit(); st.rerun()
     else: st.info("O arquivo está vazio.")
@@ -1202,7 +1202,7 @@ def pagina_fornecedores():
     if fornecedores:
         with st.container(border=True):
             df_export = pd.DataFrame([{"ID": f.id, "Categoria": f.categoria, "Nome": f.nome, "Telefone": f.telefone, "Email": f.email} for f in fornecedores])
-            evento = st.dataframe(df_export, use_container_width=True, hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            evento = st.dataframe(df_export, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1220,9 +1220,9 @@ def pagina_fornecedores():
                 c_info.write(detalhes)
                 
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-                    if c_edit.button(":material/edit: Editar", use_container_width=True):
+                    if c_edit.button(":material/edit: Editar", width="stretch"):
                         st.session_state.edit_id = id_sel; st.session_state.edit_type = "forn"; st.session_state.form_key += 1; st.rerun()
-                    if c_del.button(":material/delete: Apagar", use_container_width=True):
+                    if c_del.button(":material/delete: Apagar", width="stretch"):
                         session.delete(forn_obj); session.commit(); st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
         else: st.caption("👈 Selecione um contacto na tabela para ver mais detalhes.")
     else: st.info("Ainda não existem fornecedores registados.")
@@ -1247,7 +1247,7 @@ def pagina_ocorrencias():
     if ocs:
         with st.container(border=True):
             df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
-            evento_oc = st.dataframe(df_ocs, use_container_width=True, hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento_oc.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1257,9 +1257,9 @@ def pagina_ocorrencias():
                 col_info.info(f":material/push_pin: Submetido: **{oc_obj.titulo}**")
                 col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
                 if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
-                    if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", use_container_width=True):
+                    if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
                         oc_obj.resolvida = not oc_obj.resolvida; session.commit(); st.rerun()
-                    if col_del.button(":material/delete: Apagar", use_container_width=True):
+                    if col_del.button(":material/delete: Apagar", width="stretch"):
                         session.delete(oc_obj); session.commit(); st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
     else: st.info("Nenhuma ocorrência neste período.")
 
@@ -1411,7 +1411,7 @@ def pagina_configuracoes():
                             file_name=f"backup_condominio_{date.today().strftime('%Y%m%d')}.db",
                             mime="application/octet-stream",
                             type="primary",
-                            use_container_width=True
+                            width="stretch"
                         )
                 else:
                     st.warning("Ficheiro de base de dados não encontrado.")
