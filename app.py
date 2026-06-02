@@ -1409,7 +1409,6 @@ def pagina_configuracoes():
                 # 1. Gerar CSV de Moradores
                 df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
                 if not df_backup_cond.empty:
-                    # utf-8-sig garante que os acentos abrem bem no Excel
                     csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode('utf-8-sig')
                     col_b1.download_button("📥 Descarregar Moradores (Excel)", data=csv_cond, file_name=f"Backup_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else:
@@ -1440,19 +1439,27 @@ def pagina_configuracoes():
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
                             with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
                                 try:
-                                    from db import engine
+                                    from db import engine, init_db
                                     from models import Base
                                     import time
                                     
-                                    # O SQLAlchemy apaga de forma segura todas as tabelas na Cloud
+                                    # 1. Fechar a sessão atual para libertar a tabela
+                                    session.close()
+                                    
+                                    # 2. Forçar a limpeza das conexões fantasmas (Evita o Timeout)
+                                    engine.dispose()
+                                    
+                                    # 3. Apagar todas as tabelas e recriá-las na hora
                                     Base.metadata.drop_all(bind=engine)
-                                    # Volta a criá-las em branco
                                     Base.metadata.create_all(bind=engine)
                                     
-                                    st.success("✔️ Base de dados reiniciada com sucesso! (A terminar sessão...)")
-                                    time.sleep(3)
+                                    # 4. Voltar a correr a função que cria as tabelas e garante o Admin básico
+                                    init_db()
                                     
-                                    # Fazemos logout automático para que o sistema volte a criar a conta 'admin' ao arrancar
+                                    st.success("✔️ Base de dados reiniciada com sucesso! (A terminar sessão...)")
+                                    time.sleep(2)
+                                    
+                                    # Limpar estados e forçar recarregamento limpo
                                     st.session_state.logado = False
                                     st.session_state.username = None
                                     st.rerun()
