@@ -89,7 +89,7 @@ if WERKZEUG_INSTALLED:
     if not admin_existe:
         admin_user = Utilizador(
             username="admin", 
-            password_hash=generate_password_hash("admin123"), 
+            password_hash=generate_password_hash("M4ralisa1979#"), 
             perfil="Admin",
             modo_leitura=False,
             perm_download_docs=True,
