@@ -685,7 +685,7 @@ def pagina_dashboard():
     st.title(":material/dashboard: Dashboard")
     st.markdown(f"""
     <div style="margin-top: -15px; margin-bottom: 20px;">
-        <p style="font-size: 16px; color: #64748b; font-weight: 500;">:: [{mes_sel} {ano_sel}]</p>
+        <p style="font-size: 16px; color: #64748b; font-weight: 500;">Período referente a [{mes_sel} {ano_sel}]</p>
     </div>
     """, unsafe_allow_html=True)
     
