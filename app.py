@@ -114,6 +114,7 @@ if "perm_assembleias" not in st.session_state: st.session_state.perm_assembleias
 if "perm_arquivo" not in st.session_state: st.session_state.perm_arquivo = False
 if "perm_fornecedores" not in st.session_state: st.session_state.perm_fornecedores = False
 if "perm_ocorrencias" not in st.session_state: st.session_state.perm_ocorrencias = False
+if "perm_mural" not in st.session_state: st.session_state.perm_mural = False
 
 if "modo_leitura" not in st.session_state: st.session_state.modo_leitura = False
 if "perm_download_docs" not in st.session_state: st.session_state.perm_download_docs = True
@@ -517,6 +518,7 @@ def pagina_login():
                         st.session_state.perm_arquivo = utilizador_db.perm_arquivo
                         st.session_state.perm_fornecedores = utilizador_db.perm_fornecedores
                         st.session_state.perm_ocorrencias = utilizador_db.perm_ocorrencias
+                        st.session_state.perm_mural = utilizador_db.perm_mural
                         
                         st.session_state.modo_leitura = utilizador_db.modo_leitura
                         st.session_state.perm_download_docs = utilizador_db.perm_download_docs
@@ -601,6 +603,7 @@ def pagina_acessos():
                                 perm_dashboard=True, perm_condominos=False, 
                                 perm_quotas=True, perm_financas=False, perm_recibos=True,
                                 perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
+                                perm_mural=True, # <--- PERMISSÃO MURAL AO CRIAR
                                 modo_leitura=False, perm_download_docs=True
                             )
                             try:
@@ -614,6 +617,7 @@ def pagina_acessos():
                                     perm_dashboard=True, perm_condominos=False, 
                                     perm_quotas=True, perm_financas=False, perm_recibos=True,
                                     perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
+                                    perm_mural=True, # <--- PERMISSÃO MURAL AO CRIAR
                                     modo_leitura=False, perm_download_docs=True
                                 )
                                 try:
@@ -660,6 +664,7 @@ def pagina_acessos():
                             val_rec = st.checkbox("Emissão de Recibos", value=u_sel.perm_recibos, key=f"p_rec_{st.session_state.form_key}")
                         with col3:
                             st.write("**Operações**")
+                            val_mur = st.checkbox("Mural da Comunidade", value=u_sel.perm_mural, key=f"p_mur_{st.session_state.form_key}") # <--- CHECKBOX MURAL
                             val_ass = st.checkbox("Assembleias & Votações", value=u_sel.perm_assembleias, key=f"p_ass_{st.session_state.form_key}")
                             val_arq = st.checkbox("Arquivo Digital", value=u_sel.perm_arquivo, key=f"p_arq_{st.session_state.form_key}")
                             val_forn = st.checkbox("Fornecedores", value=u_sel.perm_fornecedores, key=f"p_forn_{st.session_state.form_key}")
@@ -670,7 +675,8 @@ def pagina_acessos():
                             u_sel.perm_download_docs = val_down
                             u_sel.perm_dashboard, u_sel.perm_condominos = val_dash, val_cond
                             u_sel.perm_quotas, u_sel.perm_financas, u_sel.perm_recibos = val_quotas, val_fin, val_rec
-                            u_sel.perm_assembleias, u_sel.perm_arquivo, u_sel.perm_fornecedores, u_sel.perm_ocorrencias = val_ass, val_arq, val_forn, val_oco
+                            u_sel.perm_mural, u_sel.perm_assembleias = val_mur, val_ass # <--- SALVA O MURAL
+                            u_sel.perm_arquivo, u_sel.perm_fornecedores, u_sel.perm_ocorrencias = val_arq, val_forn, val_oco
                             session.commit()
                             st.session_state.toast = ("Permissões atualizadas com sucesso!", "✅")
                             st.session_state.form_key += 1
@@ -1930,7 +1936,7 @@ else:
         if tes_pages: nav_morador["TESOURARIA PÚBLICA"] = tes_pages
             
         op_pages = []
-        op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"))
+        if st.session_state.perm_mural: op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:")) # <--- CONDIÇÃO MURAL
         if st.session_state.perm_assembleias: op_pages.append(st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"))
         if st.session_state.perm_arquivo: op_pages.append(st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"))
         if st.session_state.perm_fornecedores: op_pages.append(st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"))
