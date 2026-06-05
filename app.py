@@ -883,7 +883,15 @@ def pagina_condominos():
 
 def pagina_quotas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    st.header(f":material/payments: Processamento de Quotas [{mes_sel} {ano_sel}]")
+    
+    # --- TÍTULO COM ÍCONE MATERIAL E SUBTÍTULO FORMATADO IGUAL AO DASHBOARD ---
+    st.title(":material/payments: Gestão de Quotas")
+    st.markdown(f"""
+    <div style="margin-top: -15px; margin-bottom: 20px;">
+        <p style="font-size: 18px; color: #64748b; font-weight: 500;">Período referente a {mes_sel} {ano_sel}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     valor_quota_padrao = config.get("VALOR_MENSAL_FIXO", 50.00)
     
     if st.session_state.perfil == "Admin":
