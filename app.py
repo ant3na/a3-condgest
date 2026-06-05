@@ -681,10 +681,10 @@ def pagina_acessos():
 def pagina_dashboard():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
-    # --- NOVO TÍTULO CENTRADO CORRIGIDO ---
+    # --- TÍTULO REALINHADO À ESQUERDA COM SUBTÍTULO ---
     st.markdown(f"""
-    <div style="text-align: center;">
-        <h1 style="margin-bottom: 0;">📊 Dashboard 📊</h1>
+    <div style="text-align: left;">
+        <h1 style="margin-bottom: 0;">📊 Dashboard</h1>
         <p style="font-size: 18px; color: #64748b; margin-top: 5px;">Período de Análise: {mes_sel} {ano_sel}</p>
     </div>
     <br>
