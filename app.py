@@ -680,15 +680,7 @@ def pagina_acessos():
 
 def pagina_dashboard():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    
-    # --- TÍTULO REALINHADO À ESQUERDA COM SUBTÍTULO ---
-    st.markdown(f"""
-    <div style="text-align: left;">
-        <h1 style="margin-bottom: 0;">📊 Dashboard</h1>
-        <p style="font-size: 18px; color: #64748b; margin-top: 5px;">Período de Análise: {mes_sel} {ano_sel}</p>
-    </div>
-    <br>
-    """, unsafe_allow_html=True)
+    st.title(f":material/dashboard: Dashboard :: [{mes_sel} {ano_sel}]")
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
