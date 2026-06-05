@@ -1267,19 +1267,37 @@ def pagina_ocorrencias():
     if not st.session_state.modo_leitura:
         with st.expander(":material/add_alert: Registar Ocorrência"):
             with st.form("f_oc"):
+                # Campo automático e desativado (apenas para o utilizador ver quem está a assinar)
+                st.text_input("Operador / Condómino", value=st.session_state.username, disabled=True)
+                
                 tit = st.text_input("Assunto *", key=f"o_tit_{st.session_state.form_key}")
                 desc = st.text_area("Descrição *", key=f"o_desc_{st.session_state.form_key}")
                 if st.form_submit_button("Gravar"):
                     if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
                     else:
-                        session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d")))
+                        # Adicionado o criado_por na gravação do objeto
+                        session.add(Ocorrencia(
+                            titulo=tit, 
+                            descricao=desc, 
+                            data_criacao=hoje.strftime("%Y-%m-%d"),
+                            criado_por=st.session_state.username # <--- GRAVAÇÃO AUTOMÁTICA
+                        ))
                         session.commit(); st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
                         st.session_state.form_key += 1; st.rerun()
 
     ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
     if ocs:
         with st.container(border=True):
-            df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
+            # Adicionada a coluna "Utilizador" no DataFrame da tabela
+            df_ocs = pd.DataFrame([
+                {
+                    "ID": o.id, 
+                    "Data": o.data_criacao, 
+                    "Utilizador": o.criado_por if o.criado_por else "Sistema/Antigo", # Fallback para registos antigos
+                    "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", 
+                    "Assunto": o.titulo
+                } for o in ocs
+            ])
             evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento_oc.selection.rows:
@@ -1287,7 +1305,9 @@ def pagina_ocorrencias():
             with st.container(border=True):
                 oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
                 col_info, col_estado, col_del = st.columns([2, 1, 1])
-                col_info.info(f":material/push_pin: Submetido: **{oc_obj.titulo}**")
+                
+                # Exibe o criador no detalhe da ocorrência
+                col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
                 col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
                 if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
                     if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
