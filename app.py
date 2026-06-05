@@ -1538,7 +1538,7 @@ def pagina_configuracoes():
             
             st.info("💡 **Atenção:** As credenciais de email para envio de faturas devem agora ser configuradas nas Definições Avançadas (Secrets) do Streamlit Cloud.")
             
-            # ==========================================
+           # ==========================================
             # ZONA DO BOTÃO DE RESET (Só para Admin)
             # ==========================================
             if st.session_state.perfil == "Admin":
@@ -1551,32 +1551,48 @@ def pagina_configuracoes():
                     
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
-                            with st.spinner("A limpar dados e a fazer reset às numerações..."):
+                            with st.spinner("A limpar dados e a reiniciar os contadores (Método Suave)..."):
                                 try:   
                                     import time
                                     from sqlalchemy import text
                                     
-                                    # 1. Aborta qualquer operação pendente e fecha a sessão atual
+                                    # 1. Limpar qualquer operação encravada antes de começar
                                     session.rollback()
-                                    session.close()
                                     
-                                    # 2. Mata todas as ligações adormecidas no Pool (Liberta os Locks)
-                                    engine.dispose()
+                                    # 2. DELETE LINHA A LINHA (Respeitando as chaves estrangeiras - Filhos primeiro)
+                                    session.query(VotoSondagem).delete()
+                                    session.query(Sondagem).delete()
+                                    session.query(Assembleia).delete()
+                                    session.query(Ocorrencia).delete()
+                                    session.query(Fornecedor).delete()
+                                    session.query(Documento).delete()
+                                    session.query(Movimento).delete()
+                                    session.query(Orcamento).delete()
+                                    session.query(Quota).delete()
+                                    session.query(Utilizador).delete()
+                                    session.query(Condomino).delete()
                                     
-                                    # 3. Escolhe a estratégia consoante a Base de Dados
+                                    # Grava as eliminações na base de dados
+                                    session.commit()
+                                    
+                                    # 3. REINICIAR OS CONTADORES (SEQUENCES) DE ID PARA 1
+                                    # Funciona de forma diferente no Supabase (Postgres) vs SQLite local
                                     if engine.name == 'postgresql':
-                                        # Abordagem Supabase (Esvazia tudo em cascata e faz reset aos IDs)
-                                        with engine.begin() as conn:
-                                            # Recolhe o nome de todas as tabelas dinamicamente
-                                            table_names = ", ".join([table.name for table in Base.metadata.sorted_tables])
-                                            # Executa o truncate brutal
-                                            conn.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE;"))
-                                    else:
-                                        # Abordagem Local SQLite (Drop All / Create All)
-                                        Base.metadata.drop_all(bind=engine)
-                                        Base.metadata.create_all(bind=engine)
+                                        tabelas = [
+                                            'votos_sondagem', 'sondagens', 'assembleias', 'ocorrencias',
+                                            'fornecedores', 'documentos', 'movimentos', 'orcamentos',
+                                            'quotas', 'utilizadores', 'condominos'
+                                        ]
+                                        for tabela in tabelas:
+                                            try:
+                                                # No Postgres, o contador chama-se sempre nome_da_tabela_id_seq
+                                                session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
+                                            except Exception:
+                                                # Se por algum motivo a sequence não existir, ignoramos e avançamos
+                                                session.rollback()
+                                        session.commit()
                                     
-                                    st.success("✔️ Todos os dados foram limpos e as numerações repostas! (A preparar sistema...)")
+                                    st.success("✔️ Dados eliminados e todos os números de recibos/atas repostos do zero!")
                                     time.sleep(2)
                                     
                                     # Forçar logout para recriar o Admin limpo
@@ -1585,6 +1601,7 @@ def pagina_configuracoes():
                                     st.rerun()
                                     
                                 except Exception as e:
+                                    session.rollback()
                                     st.error(f"Erro técnico ao tentar limpar os dados: {e}")
 
 # ==========================================
