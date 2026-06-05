@@ -685,21 +685,25 @@ def pagina_dashboard():
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
+    # --- OTIMIZAÇÃO 1: KPIs com valores financeiros reais ---
     col1, col2, col3, col4 = st.columns(4)
     total_cond = session.query(Condomino).count()
-    dividas_ativas = session.query(Quota).filter_by(paga=False).count()
-    ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
     saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo='Receita').scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo='Despesa').scalar() or 0.0)
 
+    # Cálculo da dívida em euros
+    valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
+    dividas_ativas = session.query(Quota).filter_by(paga=False).count()
+    ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
+
     col1.metric("Frações Registadas", total_cond)
-    col2.metric("Saldo Caixa", f"{saldo_total:.2f} €")
-    col3.metric("Dívidas", dividas_ativas)
-    col4.metric("Ocorrências", ocs_pendentes)
+    col2.metric("Saldo de Caixa", f"{saldo_total:.2f} €")
+    col3.metric("Valor em Dívida", f"{valor_divida:.2f} €", f"{dividas_ativas} quotas atrasadas", delta_color="inverse")
+    col4.metric("Ocorrências Abertas", ocs_pendentes)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    tab_geral, tab_fracoes = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Pagamentos por Fração"])
+    # --- OTIMIZAÇÃO 2: Novo separador para Análise de Devedores ---
+    tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
     meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
-    meses_ordem = list(meses_map.values())
 
     with tab_geral:
         c1, c2 = st.columns(2)
@@ -712,7 +716,15 @@ def pagina_dashboard():
                     fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values='Valor', names='Estado', hole=0.4, color='Estado', color_discrete_map={'Pagas':'#2563eb', 'Em Dívida':'#ef4444'})
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig1, width="stretch", config={'displayModeBar': False})
-                else: st.info("Sem quotas geradas.")
+                    
+                    # --- OTIMIZAÇÃO 3: Taxa de cobrança anual ---
+                    total_gerado = sum(q.valor for q in quotas_ano)
+                    total_pago = sum(q.valor for q in quotas_ano if q.paga)
+                    if total_gerado > 0:
+                        taxa = (total_pago / total_gerado) * 100
+                        st.write(f"**Taxa de Cobrança Anual:** {taxa:.1f}%")
+                        st.progress(min(taxa / 100, 1.0))
+                else: st.info("Sem quotas geradas neste ano.")
 
         with c2:
             with st.container(border=True):
@@ -725,20 +737,40 @@ def pagina_dashboard():
                     fig2 = px.bar(df_fin_grouped, x='Mês_Nome', y='Valor', color='Tipo', barmode='group', color_discrete_map={'Receita':'#2563eb', 'Despesa':'#ef4444'}, text_auto='.2f')
                     fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig2, width="stretch", config={'displayModeBar': False})
-                else: st.info("Sem dados financeiros.")
+                else: st.info("Sem dados financeiros registados.")
 
     with tab_fracoes:
         with st.container(border=True):
             st.subheader(f"Evolução de Pagamentos por Fração [{ano_sel}]")
             quotas_pagas_ano = session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all()
             if quotas_pagas_ano:
-                df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração/Condómino": f"Fração {q.condomino.fracao} ({q.condomino.nome})", "Valor Pago": q.valor} for q in quotas_pagas_ano])
-                df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração/Condómino"]).sum().reset_index()
+                df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração": f"Fr. {q.condomino.fracao}", "Valor Pago": q.valor} for q in quotas_pagas_ano])
+                df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
                 df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
-                fig3 = px.bar(df_fracoes_grouped, x='Mês_Nome', y='Valor Pago', color='Fração/Condómino', barmode='group', text_auto='.2f')
-                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
+                # Utilização de barmode='stack' para ser mais legível no total mensal
+                fig3 = px.bar(df_fracoes_grouped, x='Mês_Nome', y='Valor Pago', color='Fração', barmode='stack', text_auto='.0f')
+                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig3, width="stretch", config={'displayModeBar': False})
             else: st.info("Sem pagamentos registados.")
+
+    with tab_devedores:
+        with st.container(border=True):
+            st.subheader("⚠️ Top Devedores do Condomínio")
+            todas_dividas = session.query(Quota).filter_by(paga=False).all()
+            if todas_dividas:
+                # Agrupar dívidas por fração para identificar os maiores devedores
+                df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
+                df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
+                
+                c_graf, c_tab = st.columns([1.5, 1])
+                with c_graf:
+                    fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation='h', text_auto='.2f', color="Valor Total", color_continuous_scale="Reds")
+                    fig4.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig4, width="stretch", config={'displayModeBar': False})
+                with c_tab:
+                    st.dataframe(df_top, hide_index=True, column_config={"Quotas em Atraso": st.column_config.NumberColumn("Nº Quotas", format="%d"), "Valor Total": st.column_config.NumberColumn("Em Dívida (€)", format="%.2f €")}, use_container_width=True)
+            else:
+                st.success("🎉 Excelente! Não existem condóminos com dívidas ativas.")
 
 def pagina_condominos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
