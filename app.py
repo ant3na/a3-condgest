@@ -13,8 +13,8 @@ from datetime import date
 from sqlalchemy import func, and_
 from io import BytesIO
 
-# Importações limpas dos nossos módulos refatorados (adicionado Base e engine)
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem
+# Importações limpas e completas dos nossos módulos refatorados
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio
 from db import init_db, get_session, engine
 
 # ==========================================
@@ -419,7 +419,6 @@ def gerar_pdf_ata(a):
     if a.texto_ata:
         for p in a.texto_ata.split('\n'):
             if p.strip():
-                # Converter newlines manuais em tags HTML de quebra de linha para o ReportLab
                 elements.append(Paragraph(p.strip().replace('\n', '<br/>'), style_normal))
                 
     elements.append(Spacer(1, 30))
@@ -548,7 +547,7 @@ def pagina_dashboard_morador():
                     utilizador_ativo = session.get(Utilizador, st.session_state.user_id)
                     utilizador_ativo.password_hash = generate_password_hash(nova_pwd)
                     session.commit()
-                    st.session_state.toast = ("Password atualizada com sucesso!", "✅")
+                    st.session_state.toast = ("Password updated successfully!", "✅")
                     st.session_state.form_key += 1
                     st.rerun()
     
@@ -679,18 +678,17 @@ def pagina_acessos():
         else: st.info("Sem moradores com acesso.")
 
 def pagina_dashboard():
-    import plotly.graph_objects as go # Importação para o Velocímetro
-    from datetime import datetime     # Importação para cálculo dinâmico de dias da agenda
+    import plotly.graph_objects as go
+    from datetime import datetime
     
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
-    # --- TÍTULO ALINHADO À ESQUERDA COM O PERÍODO POR BAIXO ---
+    # --- TÍTULO COM ÍCONE MATERIAL E SUBTÍTULO FORMATADO ---
+    st.title(":material/dashboard: Dashboard")
     st.markdown(f"""
-    <div style="text-align: left;">
-        <h1 style="margin-bottom: 0;">📊 Dashboard</h1>
-        <p style="font-size: 16px; color: #64748b; margin-top: 5px; font-weight: 500;">:: [{mes_sel} {ano_sel}]</p>
+    <div style="margin-top: -15px; margin-bottom: 20px;">
+        <p style="font-size: 18px; color: #64748b; font-weight: 500;">Período referente a {mes_sel} {ano_sel}</p>
     </div>
-    <br>
     """, unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
@@ -701,12 +699,10 @@ def pagina_dashboard():
     total_cond = session.query(Condomino).count()
     saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo='Receita').scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo='Despesa').scalar() or 0.0)
 
-    # Cálculo exato da dívida em euros e volume de quotas
     valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
     dividas_ativas = session.query(Quota).filter_by(paga=False).count()
     ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
 
-    # CORREÇÃO: Verde ("normal") se não houver dívidas, Vermelho ("inverse") se houver devedores
     cor_delta_divida = "normal" if dividas_ativas == 0 else "inverse"
 
     col1.metric("Frações Registadas", total_cond)
@@ -715,7 +711,7 @@ def pagina_dashboard():
     col4.metric("Ocorrências Abertas", ocs_pendentes)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- Definição dos Separadores do Painel ---
+    # --- Separadores do Painel ---
     tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
     meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
 
@@ -733,7 +729,6 @@ def pagina_dashboard():
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
                     
-                    # Barra de progresso da Taxa de Cobrança Anual
                     total_gerado = sum(q.valor for q in quotas_ano)
                     total_pago = sum(q.valor for q in quotas_ano if q.paga)
                     if total_gerado > 0:
@@ -773,9 +768,9 @@ def pagina_dashboard():
                             'bar': {'color': "#1e293b"},
                             'bgcolor': "white",
                             'steps': [
-                                {'range': [0, orc.valor_anual * 0.7], 'color': '#bbf7d0'},     # Verde (até 70%)
-                                {'range': [orc.valor_anual * 0.7, orc.valor_anual * 0.9], 'color': '#fef08a'}, # Amarelo (70% a 90%)
-                                {'range': [orc.valor_anual * 0.9, orc.valor_anual * 1.5], 'color': '#fecaca'}  # Vermelho (Mais de 90%)
+                                {'range': [0, orc.valor_anual * 0.7], 'color': '#bbf7d0'},
+                                {'range': [orc.valor_anual * 0.7, orc.valor_anual * 0.9], 'color': '#fef08a'},
+                                {'range': [orc.valor_anual * 0.9, orc.valor_anual * 1.5], 'color': '#fecaca'}
                             ],
                             'threshold': {
                                 'line': {'color': "red", 'width': 3},
@@ -800,7 +795,7 @@ def pagina_dashboard():
                 else: 
                     st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para definir o valor aprovado para este ano.")
 
-        # --- LINHA 2: Gestão Operacional e Comunitária (PONTOS 1, 2 e 4) ---
+        # --- LINHA 2: Gestão Operacional e Comunitária ---
         st.markdown("<br>", unsafe_allow_html=True)
         r2_c1, r2_c2, r2_c3 = st.columns(3)
         
@@ -808,7 +803,6 @@ def pagina_dashboard():
             with st.container(border=True):
                 st.subheader("🍩 Categoria de Despesas")
                 if despesas_ano_lista:
-                    # PONTO 1: Gráfico de Donut agrupando custos lançados
                     df_desp = pd.DataFrame([{"Categoria": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
                     df_desp_grouped = df_desp.groupby("Categoria").sum().reset_index()
                     
@@ -826,7 +820,6 @@ def pagina_dashboard():
         with r2_c2:
             with st.container(border=True):
                 st.subheader("📋 Ocorrências Pendentes")
-                # PONTO 2: Lista rápida das últimas 5 avarias/problemas em aberto
                 ocs_lista = session.query(Ocorrencia).filter_by(resolvida=False).order_by(Ocorrencia.id.desc()).limit(5).all()
                 if ocs_lista:
                     df_ocs_dash = pd.DataFrame([{"Data": o.data_criacao, "Assunto": o.titulo} for o in ocs_lista])
@@ -838,7 +831,6 @@ def pagina_dashboard():
         with r2_c3:
             with st.container(border=True):
                 st.subheader("📅 Agenda & Comunidade")
-                # PONTO 4: Alertas automáticos baseados no calendário e sondagens do sistema
                 ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
                 sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
                 
@@ -1019,6 +1011,10 @@ def pagina_quotas():
         dividas_query = session.query(Quota).filter_by(paga=False, condomino_id=st.session_state.condomino_id)
         pagas_query = session.query(Quota).filter(and_(Quota.paga == True, Quota.mes_ano == mes_str, Quota.condomino_id == st.session_state.condomino_id))
 
+    if not condominos:
+        st.warning("⚠️ **Nenhum condómino registado:** Não existem frações ou moradores registados no sistema. Por favor, vá ao separador **Condóminos** para registar manualmente ou importar o seu ficheiro Excel/CSV antes de poder processar ou gerar quotas.")
+        return
+
     condominos_sem_quota = [c for c in condominos if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=mes_str).first()]
     
     if st.session_state.perfil == "Admin":
@@ -1165,7 +1161,6 @@ def pagina_financas():
                                     tipo = str(row.get('Tipo', '')).strip().capitalize()
                                     descricao = str(row.get('Descrição', '')).strip()
                                     
-                                    # Limpeza de valor caso venha formatado estranho no Excel
                                     valor_raw = row.get('Valor', 0.0)
                                     valor = pd.to_numeric(str(valor_raw).replace(',', '.'), errors='coerce')
                                     
@@ -1186,6 +1181,7 @@ def pagina_financas():
                                     session.commit()
                                     st.success(f"{novos_movs} movimentos importados com sucesso!")
                                     st.session_state.form_key += 1
+                                    st.rerun()
                                 else:
                                     st.warning("Não foram importados registos (verifique se o Tipo é 'Despesa'/'Receita' e o Valor é > 0).")
                             except Exception as e:
@@ -1258,11 +1254,11 @@ def pagina_financas():
         if REPORTLAB_INSTALLED:
             pdf_bytes_anual = gerar_pdf_relatorio_anual(ano_sel, saldo_anterior_ano, q_atual_ano, rec_atual_ano, desp_atual_ano, df_desp_agrupadas)
             with col_pdf:
-                st.download_button(":material/picture_as_pdf: Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
+                st.download_button("📥 Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
             
             with col_mail:
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-                    if st.button(":material/forward_to_inbox: Enviar Relatório por Email a Todos", width="stretch", type="primary"):
+                    if st.button("📧 Enviar Relatório por Email a Todos", width="stretch", type="primary"):
                         condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                         emails_enviados = 0
                         for c in condominos_com_email:
@@ -1360,7 +1356,7 @@ def pagina_recibos():
                                     if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - Quota {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
                                 else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
-                                if st.button(":material/send_and_archive: Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
+                                if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
                                     if q.condomino.email:
                                         corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo em formato PDF para os seus registos.\nA Administração."
                                         if enviar_email_real(q.condomino.email, f"Recibo de Pagamento - Quota {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado com sucesso!", icon="🎉")
@@ -1373,14 +1369,10 @@ def pagina_documentos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/folder_open: Arquivo Digital de Documentos")
     
-    # 1. RETIRADA A RESTRIÇÃO DE SER 'ADMIN' PARA FAZER UPLOAD
-    # Qualquer utilizador com acesso à página e que não esteja em modo leitura pode carregar ficheiros.
     if not st.session_state.modo_leitura:
         with st.expander(":material/note_add: Arquivar Novo Documento", expanded=False):
             with st.form("form_upload"):
-                # Mostrar quem está a carregar o ficheiro (desativado para edição)
                 st.text_input("Carregado por", value=st.session_state.username, disabled=True)
-                
                 categoria = st.selectbox("Categoria", ["Atas de Assembleia", "Apólices de Seguro", "Faturas e Recibos", "Contratos", "Manuais", "Outros"], key=f"d_cat_{st.session_state.form_key}")
                 ficheiro = st.file_uploader("Selecione o ficheiro", type=['pdf', 'jpg', 'png', 'jpeg'], key=f"d_f_{st.session_state.form_key}")
                 
@@ -1388,19 +1380,17 @@ def pagina_documentos():
                     caminho = os.path.join("uploads", ficheiro.name)
                     with open(caminho, "wb") as f: f.write(ficheiro.getbuffer())
                     
-                    # Adicionar o utilizador que faz o upload na gravação
                     session.add(Documento(
                         nome_ficheiro=ficheiro.name, 
                         categoria=categoria, 
                         caminho=caminho,
-                        carregado_por=st.session_state.username # Grava quem enviou
+                        carregado_por=st.session_state.username
                     ))
                     session.commit(); st.session_state.form_key += 1; st.rerun()
 
     docs = session.query(Documento).order_by(Documento.id.desc()).all()
     if docs:
         with st.container(border=True):
-            # Adicionada a coluna "Utilizador" no DataFrame da tabela
             df_docs = pd.DataFrame([
                 {
                     "ID": d.id, 
@@ -1418,23 +1408,19 @@ def pagina_documentos():
                 doc_obj = session.get(Documento, int(df_docs.iloc[evento_doc.selection.rows[0]]["ID"]))
                 col_info, col_down, col_del = st.columns([2, 1, 1])
                 
-                # Exibe quem carregou no resumo informativo
                 utilizador_txt = doc_obj.carregado_por if doc_obj.carregado_por else "Sistema/Antigo"
                 col_info.info(f":material/push_pin: Selecionado: **{doc_obj.nome_ficheiro}** | Carregado por: **{utilizador_txt}**")
                 
                 if st.session_state.perm_download_docs:
                     try:
-                        with open(doc_obj.caminho, "rb") as file: col_down.download_button(":material/download: Baixar", data=file, file_name=doc_obj.nome_ficheiro, width="stretch")
+                        with open(doc_obj.caminho, "rb") as file: col_down.download_button("📥 Baixar", data=file, file_name=doc_obj.nome_ficheiro, width="stretch")
                     except FileNotFoundError: col_down.error("Perdido.")
                 else: col_down.warning("🚫 Sem permissão")
                     
-                # 2. NOVA REGRA DE SEGURANÇA PARA ELIMINAÇÃO DE FICHEIROS
                 if not st.session_state.modo_leitura:
-                    # O Administrador pode apagar tudo. O Morador só pode apagar os seus próprios uploads.
                     pode_apagar = (st.session_state.perfil == "Admin") or (doc_obj.carregado_por == st.session_state.username)
-                    
                     if pode_apagar:
-                        if col_del.button(":material/delete: Apagar", width="stretch"):
+                        if col_del.button("🗑️ Apagar", width="stretch"):
                             if os.path.exists(doc_obj.caminho): os.remove(doc_obj.caminho) 
                             session.delete(doc_obj); session.commit(); st.rerun()
     else: st.info("O arquivo está vazio.")
@@ -1509,26 +1495,38 @@ def pagina_fornecedores():
     else: st.info("Ainda não existem fornecedores registados.")
 
 def pagina_ocorrencias():
+    import time
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/build: Gestão de Ocorrências")
     
     if not st.session_state.modo_leitura:
-        with st.expander(":material/add_alert: Registar Ocorrência"):
+        with st.expander(":material/add_alert: Registar Nova Ocorrência"):
             with st.form("f_oc"):
-                # Campo automático e desativado (apenas para o utilizador ver quem está a assinar)
-                st.text_input("Operador / Condómino", value=st.session_state.username, disabled=True)
+                st.text_input("Reportado por", value=st.session_state.username, disabled=True)
+                tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
+                desc = st.text_area("Descrição detalhada do problema *", key=f"o_desc_{st.session_state.form_key}")
                 
-                tit = st.text_input("Assunto *", key=f"o_tit_{st.session_state.form_key}")
-                desc = st.text_area("Descrição *", key=f"o_desc_{st.session_state.form_key}")
-                if st.form_submit_button("Gravar"):
+                st.write("**Provas Fotográficas (Opcional)**")
+                c1, c2 = st.columns(2)
+                with c1: foto1 = st.file_uploader("Fotografia 1", type=['jpg', 'jpeg', 'png'], key=f"o_f1_{st.session_state.form_key}")
+                with c2: foto2 = st.file_uploader("Fotografia 2", type=['jpg', 'jpeg', 'png'], key=f"o_f2_{st.session_state.form_key}")
+                
+                if st.form_submit_button("Reportar Ocorrência"):
                     if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
                     else:
-                        # Adicionado o criado_por na gravação do objeto
+                        caminho_f1, caminho_f2 = None, None
+                        timestamp_str = str(int(time.time()))
+                        
+                        if foto1:
+                            caminho_f1 = os.path.join("uploads", f"oc_{timestamp_str}_1_{foto1.name}")
+                            with open(caminho_f1, "wb") as f: f.write(foto1.getbuffer())
+                        if foto2:
+                            caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
+                            with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
+
                         session.add(Ocorrencia(
-                            titulo=tit, 
-                            descricao=desc, 
-                            data_criacao=hoje.strftime("%Y-%m-%d"),
-                            criado_por=st.session_state.username # <--- GRAVAÇÃO AUTOMÁTICA
+                            titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"),
+                            criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2
                         ))
                         session.commit(); st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
                         st.session_state.form_key += 1; st.rerun()
@@ -1536,12 +1534,10 @@ def pagina_ocorrencias():
     ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
     if ocs:
         with st.container(border=True):
-            # Adicionada a coluna "Utilizador" no DataFrame da tabela
             df_ocs = pd.DataFrame([
                 {
-                    "ID": o.id, 
-                    "Data": o.data_criacao, 
-                    "Utilizador": o.criado_por if o.criado_por else "Sistema/Antigo", # Fallback para registos antigos
+                    "ID": o.id, "Data": o.data_criacao, 
+                    "Utilizador": o.criado_por if o.criado_por else "N/D", 
                     "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", 
                     "Assunto": o.titulo
                 } for o in ocs
@@ -1554,9 +1550,15 @@ def pagina_ocorrencias():
                 oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
                 col_info, col_estado, col_del = st.columns([2, 1, 1])
                 
-                # Exibe o criador no detalhe da ocorrência
                 col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
                 col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
+                
+                if oc_obj.foto1 or oc_obj.foto2:
+                    st.write("**Fotografias Anexadas:**")
+                    c_img1, c_img2 = st.columns(2)
+                    if oc_obj.foto1 and os.path.exists(oc_obj.foto1): c_img1.image(oc_obj.foto1, use_container_width=True)
+                    if oc_obj.foto2 and os.path.exists(oc_obj.foto2): c_img2.image(oc_obj.foto2, use_container_width=True)
+
                 if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
                     if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
                         oc_obj.resolvida = not oc_obj.resolvida; session.commit(); st.rerun()
@@ -1614,17 +1616,11 @@ def pagina_assembleias():
                         if col_act.button(":material/delete: Apagar", key=f"del_ass_{r.id}", width="stretch"): 
                             session.delete(r); session.commit(); st.rerun()
                             
-                    # NOVA SECÇÃO DA ATA
                     if r.realizada:
                         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                             with st.expander(":material/edit_document: Redigir / Gerar Ata", expanded=False):
-                                
-                                # 1. Definir o texto por defeito (conforme sugerido)
                                 texto_por_defeito = f"Ao xxx dia do mês de xxx de dois mil e vinte e xx pelas xx horas e xx minutos,\nreuniram no hall do prédio, a assembleia extraordinária de condóminos do condomínio do\nedifício em propriedade horizontal da Praceta Antero de Quental, Nº5, freguesia de Quinta do\nAnjo, conselho de Palmela, NIPC 901571253, para deliberar sobre os seguintes assuntos:\n\n{r.assuntos}\n\n[Escreva aqui as decisões tomadas...]"
-                                
                                 texto_atual = r.texto_ata if r.texto_ata else texto_por_defeito
-                                
-                                # 2. Área de texto independente (fora de um st.form para permitir o download_button a seguir)
                                 novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=250, key=f"ata_txt_{r.id}")
                                 
                                 if st.button("💾 Gravar Texto da Ata", key=f"save_{r.id}", type="primary", width="stretch"):
@@ -1633,7 +1629,6 @@ def pagina_assembleias():
                                     st.session_state.toast = ("Texto gravado com sucesso!", "✅")
                                     st.rerun()
                                 
-                                # 3. Só mostra os botões de ação do PDF se o texto já estiver gravado
                                 if r.texto_ata:
                                     st.markdown("---")
                                     st.write("**Ações Disponíveis (PDF):**")
@@ -1644,26 +1639,21 @@ def pagina_assembleias():
                                         caminho = os.path.join("uploads", nome_ficheiro)
                                         
                                         col_down, col_arq, col_mail = st.columns(3)
-                                        
-                                        # OPÇÃO A: Apenas Descarregar para o PC
                                         with col_down:
                                             st.download_button("📥 1. Descarregar PDF", data=pdf_ata, file_name=nome_ficheiro, mime="application/pdf", use_container_width=True)
                                             
-                                        # OPÇÃO B: Guardar no separador Arquivo Digital
                                         with col_arq:
                                             if st.button("🗂️ 2. Arquivar no Sistema", key=f"arq_{r.id}", use_container_width=True):
                                                 with open(caminho, "wb") as f: f.write(pdf_ata)
-                                                
                                                 doc_existe = session.query(Documento).filter_by(nome_ficheiro=nome_ficheiro).first()
                                                 if not doc_existe:
-                                                    session.add(Documento(nome_ficheiro=nome_ficheiro, categoria="Atas de Assembleia", caminho=caminho))
+                                                    session.add(Documento(nome_ficheiro=nome_ficheiro, category="Atas de Assembleia", caminho=caminho))
                                                     session.commit()
                                                     st.session_state.toast = ("Ata arquivada com sucesso no Arquivo Digital!", "🗂️")
                                                 else:
                                                     st.session_state.toast = ("Esta ata já se encontra arquivada.", "ℹ️")
                                                 st.rerun()
                                                 
-                                        # OPÇÃO C: Enviar por Email a todos
                                         with col_mail:
                                             if st.button("📧 3. Enviar por Email", key=f"mail_{r.id}", use_container_width=True):
                                                 conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
@@ -1673,15 +1663,11 @@ def pagina_assembleias():
                                                     if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", corpo, anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro):
                                                         emails_enviados += 1
                                                 
-                                                if emails_enviados > 0:
-                                                    st.session_state.toast = (f"Ata enviada para {emails_enviados} condóminos!", "📧")
-                                                else:
-                                                    st.session_state.toast = ("Nenhum condómino com email registado para envio.", "⚠️")
+                                                if emails_enviados > 0: st.session_state.toast = (f"Ata enviada para {emails_enviados} condóminos!", "📧")
+                                                else: st.session_state.toast = ("Nenhum condómino com email registado para envio.", "⚠️")
                                                 st.rerun()
-                                    else:
-                                        st.error("⚠️ Instale o 'reportlab' para gerar a ata em PDF.")
+                                    else: st.error("⚠️ Instale o 'reportlab' para gerar a ata em PDF.")
                         else:
-                            # Visão do Morador: Apenas ver/descarregar se a ata já estiver redigida
                             if r.texto_ata:
                                 with st.expander(":material/description: Ver Ata da Reunião"):
                                     st.write(r.texto_ata)
@@ -1738,6 +1724,52 @@ def pagina_assembleias():
                             session.delete(s); session.commit(); st.rerun()
         else: st.info("Não existem votações em curso.")
 
+def pagina_mural():
+    from datetime import datetime
+    st.header(":material/forum: Mural da Comunidade")
+    st.write("Um espaço para partilhar anúncios, pedidos ou comunicados com os seus vizinhos.")
+    
+    if not st.session_state.modo_leitura:
+        with st.expander(":material/add_comment: Criar Novo Anúncio", expanded=False):
+            with st.form("form_anuncio"):
+                titulo = st.text_input("Título (ex: Obras no 2º Andar, Preciso de Ferramenta, etc)")
+                mensagem = st.text_area("Mensagem")
+                
+                if st.form_submit_button("Publicar no Mural"):
+                    if not titulo.strip() or not mensagem.strip():
+                        st.error("O título e a mensagem são obrigatórios.")
+                    else:
+                        fracao_str = "Admin" if st.session_state.perfil == "Admin" else ""
+                        if st.session_state.condomino_id:
+                            cond = session.get(Condomino, st.session_state.condomino_id)
+                            if cond: fracao_str = f"Fr. {cond.fracao}"
+                        
+                        session.add(Anuncio(
+                            titulo=titulo, mensagem=mensagem,
+                            data_criacao=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            criado_por=st.session_state.username, fracao=fracao_str
+                        ))
+                        session.commit(); st.session_state.toast = ("Anúncio publicado com sucesso!", "✅")
+                        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    anuncios = session.query(Anuncio).order_by(Anuncio.id.desc()).all()
+    if anuncios:
+        for a in anuncios:
+            with st.container(border=True):
+                c_post, c_del = st.columns([5, 1])
+                c_post.markdown(f"#### {a.titulo}")
+                c_post.caption(f"👤 Publicado por **{a.criado_por}** ({a.fracao}) em {a.data_criacao}")
+                c_post.write(a.mensagem)
+                
+                if not st.session_state.modo_leitura:
+                    pode_apagar = (st.session_state.perfil == "Admin") or (a.criado_por == st.session_state.username)
+                    if pode_apagar:
+                        if c_del.button("🗑️ Apagar", key=f"del_an_{a.id}", use_container_width=True):
+                            session.delete(a); session.commit(); st.rerun()
+    else: st.info("O mural está silencioso. Seja o primeiro a publicar alguma coisa!")
+
 def pagina_configuracoes():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/settings: Configurações e Segurança")
@@ -1754,7 +1786,7 @@ def pagina_configuracoes():
                     nif = st.text_input("NIF", value=config.get("NIF_CONDOMINIO", ""), key=f"cfg_nif_{st.session_state.form_key}")
                     iban = st.text_input("IBAN para Pagamentos", value=config.get("IBAN_CONDOMINIO", ""), key=f"cfg_ib_{st.session_state.form_key}")
                     valor_quota = st.number_input("Valor Padrão da Quota (€)", value=config.get("VALOR_MENSAL_FIXO", 50.0), min_value=0.0, key=f"cfg_v_{st.session_state.form_key}")
-                    if st.form_submit_button(":material/save: Guardar Configurações"):
+                    if st.form_submit_button("Guardar Configurações"):
                         config["NOME_CONDOMINIO"] = nome
                         config["MORADA_CONDOMINIO"] = morada
                         config["NIF_CONDOMINIO"] = nif
@@ -1762,74 +1794,58 @@ def pagina_configuracoes():
                         config["VALOR_MENSAL_FIXO"] = valor_quota
                         guardar_configs(config)
                         st.session_state.toast = ("Configurações atualizadas!", "✅")
-                        st.session_state.form_key += 1
-                        st.rerun()
+                        st.session_state.form_key += 1; st.rerun()
                         
         with tab_avisos:
             with st.container(border=True):
                 with st.form("form_avisos"):
                     st.subheader("Avisos à Comunidade")
-                    st.write("Crie um aviso de destaque que será mostrado no ecrã inicial de todos os moradores.")
                     aviso_ativo = st.checkbox("Mostrar aviso publicamente", value=config.get("AVISO_ATIVO", False), key=f"cfg_av_at_{st.session_state.form_key}")
                     aviso_texto = st.text_area("Texto do Aviso", value=config.get("AVISO_GLOBAL", ""), key=f"cfg_av_txt_{st.session_state.form_key}")
                     
-                    if st.form_submit_button(":material/campaign: Atualizar Quadro de Avisos"):
+                    if st.form_submit_button("Atualizar Quadro de Avisos"):
                         config["AVISO_ATIVO"] = aviso_ativo
                         config["AVISO_GLOBAL"] = aviso_texto
                         guardar_configs(config)
                         st.session_state.toast = ("Aviso atualizado com sucesso!", "✅")
-                        st.session_state.form_key += 1
-                        st.rerun()
+                        st.session_state.form_key += 1; st.rerun()
                         
         with tab_seguranca:
             with st.container(border=True):
-                st.subheader(":material/cloud_download: Cópia de Segurança (Backup Cloud)")
-                st.write("Como a base de dados está alojada na Cloud (Supabase), os dados estão protegidos pelo servidor. Aqui pode exportar as tabelas principais para o seu computador (abre no Excel).")
-                
+                st.subheader("Cópia de Segurança (Backup Cloud)")
                 col_b1, col_b2 = st.columns(2)
                 
-                # 1. Gerar CSV de Moradores
                 df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
                 if not df_backup_cond.empty:
                     csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode('utf-8-sig')
                     col_b1.download_button("📥 Descarregar Moradores (Excel)", data=csv_cond, file_name=f"Backup_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
-                else:
-                    col_b1.info("Sem dados de moradores para backup.")
+                else: col_b1.info("Sem dados de moradores.")
                     
-                # 2. Gerar CSV Financeiro (Extrato total)
                 df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
                 if not df_backup_fin.empty:
                     csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode('utf-8-sig')
                     col_b2.download_button("📥 Descarregar Contas (Excel)", data=csv_fin, file_name=f"Backup_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
-                else:
-                    col_b2.info("Sem dados financeiros para backup.")
+                else: col_b2.info("Sem dados financeiros.")
             
-            st.info("💡 **Atenção:** As credenciais de email para envio de faturas devem agora ser configuradas nas Definições Avançadas (Secrets) do Streamlit Cloud.")
-            
-           # ==========================================
-            # ZONA DO BOTÃO DE RESET (Só para Admin)
-            # ==========================================
             if st.session_state.perfil == "Admin":
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
-                    st.subheader("🚨 Zona de Perigo 🚨")
-                    st.warning("Atenção: Esta operação irá eliminar permanentemente todos os dados. A Base de Dados será recriada totalmente vazia.")
-                    
-                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero avançar para o reset da Base de Dados.")
+                    st.subheader("🚨 Zona de Perigo (Reset de Dados)")
+                    st.warning("Atenção: Esta operação irá apagar permanentemente todos os moradores, recibos, despesas e configurações. A base de dados será recriada totalmente vazia.")
+                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero mesmo apagar a base de dados.")
                     
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
-                            with st.spinner("A efetuar reset à Base de Dados..."):
+                            with st.spinner("A limpar dados e a reiniciar os contadores (Método Suave)..."):
                                 try:   
                                     import time
                                     from sqlalchemy import text
                                     
-                                    # 1. Limpar qualquer operação encravada antes de começar
                                     session.rollback()
                                     
-                                    # 2. DELETE LINHA A LINHA (Respeitando as chaves estrangeiras - Filhos primeiro)
                                     session.query(VotoSondagem).delete()
                                     session.query(Sondagem).delete()
+                                    session.query(Anuncio).delete()
                                     session.query(Assembleia).delete()
                                     session.query(Ocorrencia).delete()
                                     session.query(Fornecedor).delete()
@@ -1840,45 +1856,37 @@ def pagina_configuracoes():
                                     session.query(Utilizador).delete()
                                     session.query(Condomino).delete()
                                     
-                                    # Grava as eliminações na base de dados
                                     session.commit()
                                     
-                                    # 3. REINICIAR OS CONTADORES (SEQUENCES) DE ID PARA 1
-                                    # Funciona de forma diferente no Supabase (Postgres) vs SQLite local
                                     if engine.name == 'postgresql':
                                         tabelas = [
-                                            'votos_sondagem', 'sondagens', 'assembleias', 'ocorrencias',
-                                            'fornecedores', 'documentos', 'movimentos', 'orcamentos',
-                                            'quotas', 'utilizadores', 'condominos'
+                                            'votos_sondagem', 'sondagens', 'anuncios', 'assembleias',
+                                            'ocorrencias', 'fornecedores', 'documentos', 'movimentos',
+                                            'orcamentos', 'quotas', 'utilizadores', 'condominos'
                                         ]
                                         for tabela in tabelas:
                                             try:
-                                                # No Postgres, o contador chama-se sempre nome_da_tabela_id_seq
                                                 session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
                                             except Exception:
-                                                # Se por algum motivo a sequence não existir, ignoramos e avançamos
                                                 session.rollback()
                                         session.commit()
                                     
-                                    st.success("✔️ Dados eliminados. Reset à Base de Dados efetuada!")
+                                    st.success("✔️ Todos os dados foram limpos e as numerações repostas do zero!")
                                     time.sleep(2)
                                     
-                                    # Forçar logout para recriar o Admin limpo
                                     st.session_state.logado = False
                                     st.session_state.username = None
                                     st.rerun()
                                     
                                 except Exception as e:
                                     session.rollback()
-                                    st.error(f"Erro técnico ao tentar eliminar a Base de Dados: {e}")
+                                    st.error(f"Erro técnico ao tentar limpar os dados: {e}")
 
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
 # ==========================================
-
 if not st.session_state.logado:
     pg = st.navigation([st.Page(pagina_login, title="Acesso Reservado", icon=":material/lock:")])
-
 else:
     if st.session_state.perfil == "Admin":
         pg = st.navigation({
@@ -1891,7 +1899,8 @@ else:
                 st.Page(pagina_financas, title="Finanças & Extratos", icon=":material/account_balance:"), 
                 st.Page(pagina_recibos, title="Emissão de Recibos", icon=":material/receipt_long:")
             ],
-            "OPERAÇÕES": [
+            "OPERAÇÕES & COMUNIDADE": [
+                st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"),
                 st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"),
                 st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"),
                 st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"),
@@ -1921,6 +1930,7 @@ else:
         if tes_pages: nav_morador["TESOURARIA PÚBLICA"] = tes_pages
             
         op_pages = []
+        op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"))
         if st.session_state.perm_assembleias: op_pages.append(st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"))
         if st.session_state.perm_arquivo: op_pages.append(st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"))
         if st.session_state.perm_fornecedores: op_pages.append(st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"))
