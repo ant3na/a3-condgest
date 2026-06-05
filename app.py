@@ -1156,7 +1156,9 @@ def pagina_documentos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/folder_open: Arquivo Digital de Documentos")
     
-    if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
+    # 1. RETIRADA A RESTRIÇÃO DE SER 'ADMIN' PARA FAZER UPLOAD
+    # Qualquer utilizador com acesso à página e que não esteja em modo leitura pode carregar ficheiros.
+    if not st.session_state.modo_leitura:
         with st.expander(":material/note_add: Arquivar Novo Documento", expanded=False):
             with st.form("form_upload"):
                 # Mostrar quem está a carregar o ficheiro (desativado para edição)
@@ -1174,7 +1176,7 @@ def pagina_documentos():
                         nome_ficheiro=ficheiro.name, 
                         categoria=categoria, 
                         caminho=caminho,
-                        carregado_por=st.session_state.username # <--- GRAVAÇÃO AUTOMÁTICA
+                        carregado_por=st.session_state.username # Grava quem enviou
                     ))
                     session.commit(); st.session_state.form_key += 1; st.rerun()
 
@@ -1188,7 +1190,7 @@ def pagina_documentos():
                     "Data": d.data_upload, 
                     "Categoria": d.categoria, 
                     "Nome": d.nome_ficheiro,
-                    "Utilizador": d.carregado_por if d.carregado_por else "Sistema/Antigo" # Fallback para ficheiros antigos
+                    "Utilizador": d.carregado_por if d.carregado_por else "Sistema/Antigo"
                 } for d in docs
             ])
             evento_doc = st.dataframe(df_docs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
@@ -1209,10 +1211,15 @@ def pagina_documentos():
                     except FileNotFoundError: col_down.error("Perdido.")
                 else: col_down.warning("🚫 Sem permissão")
                     
-                if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
-                    if col_del.button(":material/delete: Apagar", width="stretch"):
-                        if os.path.exists(doc_obj.caminho): os.remove(doc_obj.caminho) 
-                        session.delete(doc_obj); session.commit(); st.rerun()
+                # 2. NOVA REGRA DE SEGURANÇA PARA ELIMINAÇÃO DE FICHEIROS
+                if not st.session_state.modo_leitura:
+                    # O Administrador pode apagar tudo. O Morador só pode apagar os seus próprios uploads.
+                    pode_apagar = (st.session_state.perfil == "Admin") or (doc_obj.carregado_por == st.session_state.username)
+                    
+                    if pode_apagar:
+                        if col_del.button(":material/delete: Apagar", width="stretch"):
+                            if os.path.exists(doc_obj.caminho): os.remove(doc_obj.caminho) 
+                            session.delete(doc_obj); session.commit(); st.rerun()
     else: st.info("O arquivo está vazio.")
 
 def pagina_fornecedores():
