@@ -1544,14 +1544,14 @@ def pagina_configuracoes():
             if st.session_state.perfil == "Admin":
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
-                    st.subheader("🚨 Zona de Perigo (Reset de Dados)")
-                    st.warning("Atenção: Esta operação irá apagar permanentemente todos os moradores, recibos, despesas e configurações. A base de dados será recriada totalmente vazia.")
+                    st.subheader("🚨 Zona de Perigo")
+                    st.warning("Atenção: Esta operação irá eliminar permanentemente todos os dados. A Base de Dados será recriada totalmente vazia.")
                     
-                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero mesmo apagar a base de dados.")
+                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero avançar para o reset da Base de Dados.")
                     
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
-                            with st.spinner("A limpar dados e a reiniciar os contadores (Método Suave)..."):
+                            with st.spinner("A efetuar reset à Base de Dados..."):
                                 try:   
                                     import time
                                     from sqlalchemy import text
@@ -1592,7 +1592,7 @@ def pagina_configuracoes():
                                                 session.rollback()
                                         session.commit()
                                     
-                                    st.success("✔️ Dados eliminados e todos os números de recibos/atas repostos do zero!")
+                                    st.success("✔️ Dados eliminados. Reset à Base de Dados efetuada!")
                                     time.sleep(2)
                                     
                                     # Forçar logout para recriar o Admin limpo
@@ -1602,7 +1602,7 @@ def pagina_configuracoes():
                                     
                                 except Exception as e:
                                     session.rollback()
-                                    st.error(f"Erro técnico ao tentar limpar os dados: {e}")
+                                    st.error(f"Erro técnico ao tentar eliminar a Base de Dados: {e}")
 
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
