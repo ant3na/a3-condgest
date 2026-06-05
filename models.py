@@ -68,6 +68,7 @@ class Ocorrencia(Base):
     descricao = Column(String)
     resolvida = Column(Boolean, default=False)
     data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d"))
+    criado_por = Column(String, nullable=True)
 
 class Orcamento(Base):
     __tablename__ = 'orcamentos'
