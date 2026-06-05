@@ -37,6 +37,45 @@ except ImportError:
     REPORTLAB_INSTALLED = False
 
 # ==========================================
+# CLASSE DE PAGINAÇÃO DINÂMICA PREMIUM (REPORTLAB)
+# ==========================================
+if REPORTLAB_INSTALLED:
+    class NumberedCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            canvas.Canvas.__init__(self, *args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self.draw_page_number(num_pages)
+                canvas.Canvas.showPage(self)
+            canvas.Canvas.save(self)
+
+        def draw_page_number(self, page_count):
+            self.saveState()
+            self.setFont("Helvetica", 9)
+            self.setFillColor(colors.HexColor("#64748b")) # Cinza ardósia elegante
+            
+            # Linha horizontal minimalista de rodapé
+            self.setStrokeColor(colors.HexColor("#e2e8f0"))
+            self.setLineWidth(0.5)
+            self.line(50, 45, 545, 45)
+            
+            # Paginação dinâmica ("Página X de Y")
+            texto_pagina = f"Página {self._pageNumber} de {page_count}"
+            self.drawRightString(545, 30, texto_pagina)
+            
+            # Identificador institucional fixo
+            self.drawString(50, 30, "A3.Cond.Gest — Relatório de Gestão Oficial")
+            self.restoreState()
+
+# ==========================================
 # 1. GESTÃO DE CONFIGURAÇÕES (JSON) E HELPERS
 # ==========================================
 CONFIG_FILE = "config.json"
@@ -69,7 +108,7 @@ def formatar_username(nome_completo):
     else:
         raw_user = partes[0]
     raw_user = raw_user.lower()
-    return ''.join(c for c in unicodedata.normalize('NFD', raw_user) if unicodedata.category(c) != 'Mn')
+    return "".join(c for c in unicodedata.normalize("NFD", raw_user) if unicodedata.category(c) != "Mn")
 
 # ==========================================
 # 2. CONFIGURAÇÕES GLOBAIS E BASE DE DADOS
@@ -94,7 +133,8 @@ if WERKZEUG_INSTALLED:
             modo_leitura=False,
             perm_download_docs=True,
             perm_dashboard=True, perm_condominos=True, perm_quotas=True, perm_financas=True, 
-            perm_recibos=True, perm_assembleias=True, perm_arquivo=True, perm_fornecedores=True, perm_ocorrencias=True
+            perm_recibos=True, perm_assembleias=True, perm_arquivo=True, perm_fornecedores=True, perm_ocorrencias=True,
+            perm_mural=True
         )
         session.add(admin_user)
         session.commit()
@@ -114,7 +154,7 @@ if "perm_assembleias" not in st.session_state: st.session_state.perm_assembleias
 if "perm_arquivo" not in st.session_state: st.session_state.perm_arquivo = False
 if "perm_fornecedores" not in st.session_state: st.session_state.perm_fornecedores = False
 if "perm_ocorrencias" not in st.session_state: st.session_state.perm_ocorrencias = False
-if "perm_mural" not in st.session_state: st.session_state.perm_mural = False
+if "perm_mural" not in st.session_state: st.session_state.perm_mural = True
 
 if "modo_leitura" not in st.session_state: st.session_state.modo_leitura = False
 if "perm_download_docs" not in st.session_state: st.session_state.perm_download_docs = True
@@ -134,7 +174,7 @@ if "toast" in st.session_state:
 
 @st.cache_data
 def convert_df(df):
-    return df.to_csv(index=False, sep=";").encode('utf-8')
+    return df.to_csv(index=False, sep=";").encode("utf-8")
 
 def get_image_base64(path):
     if os.path.exists(path):
@@ -154,22 +194,22 @@ def enviar_email_real(destinatario, assunto, corpo, anexo_bytes=None, nome_anexo
         email_pass = config.get("EMAIL_PASS", "")
     
     if not email_user or not email_pass:
-        st.error("⚠️ Credenciais de email não configuradas no ficheiro seguro (.streamlit/secrets.toml).")
+        st.error("⚠️ Credenciais de email não configuradas.")
         return False
         
     try:
         msg = MIMEMultipart()
-        msg['From'] = email_user
-        msg['To'] = destinatario
-        msg['Subject'] = assunto
-        msg.attach(MIMEText(corpo, 'plain', 'utf-8')) 
+        msg["From"] = email_user
+        msg["To"] = destinatario
+        msg["Subject"] = assunto
+        msg.attach(MIMEText(corpo, "plain", "utf-8")) 
         
         if anexo_bytes:
             part = MIMEApplication(anexo_bytes, Name=nome_anexo)
-            part['Content-Disposition'] = f'attachment; filename="{nome_anexo}"'
+            part["Content-Disposition"] = f'attachment; filename="{nome_anexo}"'
             msg.attach(part)
             
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(email_user, email_pass)
         server.sendmail(email_user, destinatario, msg.as_string())
@@ -186,7 +226,7 @@ def desenhar_cabecalho_pdf(canvas_obj, doc, titulo, subtitulo):
     
     if os.path.exists(caminho_logo):
         try:
-            canvas_obj.drawImage(caminho_logo, 50, height - 110 - offset_y, width=80, height=80, preserveAspectRatio=True, mask='auto')
+            canvas_obj.drawImage(caminho_logo, 50, height - 110 - offset_y, width=80, height=80, preserveAspectRatio=True, mask="auto")
             y_esq = height - 135 - offset_y
         except Exception: pass 
 
@@ -210,7 +250,7 @@ def gerar_pdf_recibo(q):
     if not REPORTLAB_INSTALLED: return None
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
-    periodo_seguro = q.mes_ano.replace('/', '-')
+    periodo_seguro = q.mes_ano.replace("/", "-")
     titulo_pdf = f"Recibo_{q.condomino.nome.replace(' ', '_')}_{q.condomino.fracao}_{periodo_seguro}"
     c.setTitle(titulo_pdf)
 
@@ -271,20 +311,40 @@ def gerar_pdf_recibo(q):
     buffer.close()
     return pdf_bytes
 
+def obter_estilo_tabela_premium():
+    return TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e293b")), 
+        ("TEXTCOLOR", (0,0), (-1,0), colors.whitesmoke),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,0), 9),
+        ("ALIGN", (0,0), (-1,-1), "LEFT"),
+        ("ALIGN", (-1,0), (-1,-1), "RIGHT"),
+        ("TOPPADDING", (0,0), (-1,-1), 8),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("LEFTPADDING", (0,0), (-1,-1), 6),
+        ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("LINEBELOW", (0,0), (-1,0), 1, colors.HexColor("#0f172a")),
+        ("LINEBELOW", (0,1), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,1), (-1,-1), 9),
+        ("TEXTCOLOR", (0,1), (-1,-1), colors.HexColor("#334155")),
+    ])
+
 def gerar_pdf_extrato(df, mes, ano, saldo_anterior):
     if not REPORTLAB_INSTALLED: return None
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=50)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=60)
     
     styles = getSampleStyleSheet()
-    style_normal = styles['Normal'].clone('style_normal')
-    style_normal.fontName = 'Helvetica'
-    style_normal.fontSize = 11
+    style_normal = styles["Normal"].clone("style_normal")
+    style_normal.fontName = "Helvetica"
+    style_normal.fontSize = 10
     style_normal.spaceAfter = 6
     
-    style_heading = styles['Heading2'].clone('style_heading')
-    style_heading.fontName = 'Helvetica-Bold'
-    style_heading.fontSize = 12
+    style_heading = styles["Heading2"].clone("style_heading")
+    style_heading.fontName = "Helvetica-Bold"
+    style_heading.fontSize = 11
     style_heading.spaceAfter = 10
     style_heading.spaceBefore = 15
     
@@ -293,27 +353,15 @@ def gerar_pdf_extrato(df, mes, ano, saldo_anterior):
     elements.append(Paragraph(f"<b>1. DETALHE DE MOVIMENTOS</b>", style_heading))
     tabela_data = [["Data", "Tipo", "Descrição", "Valor (EUR)"]]
     for _, row in df.iterrows():
-        tabela_data.append([str(row['Data']), str(row['Tipo']), str(row['Descrição']), f"{row['Valor']:.2f}"])
+        tabela_data.append([str(row["Data"]), str(row["Tipo"]), str(row["Descrição"]), f"{row['Valor']:.2f}"])
 
     t = Table(tabela_data, colWidths=[70, 90, 250, 80])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#64748b')), 
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 10),
-        ('TOPPADDING', (0,0), (-1,0), 10),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#f8fafc')),
-        ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#e2e8f0')),
-        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-    ]))
+    t.setStyle(obter_estilo_tabela_premium())
     elements.append(t)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
 
-    total_rec = df[df['Tipo'].str.contains('Receita', na=False)]['Valor'].sum()
-    total_desp = df[df['Tipo'].str.contains('Despesa', na=False)]['Valor'].sum()
+    total_rec = df[df["Tipo"].str.contains("Receita", na=False)]["Valor"].sum()
+    total_desp = df[df["Tipo"].str.contains("Despesa", na=False)]["Valor"].sum()
     saldo_final = saldo_anterior + total_rec - total_desp
 
     elements.append(Paragraph(f"<b>2. RESUMO FINANCEIRO DO MÊS</b>", style_heading))
@@ -321,12 +369,12 @@ def gerar_pdf_extrato(df, mes, ano, saldo_anterior):
     elements.append(Paragraph(f"<b>(+) Entradas no Mês:</b> {total_rec:.2f} EUR", style_normal))
     elements.append(Paragraph(f"<b>(-) Saídas no Mês:</b> {total_desp:.2f} EUR", style_normal))
     elements.append(Spacer(1, 5))
-    elements.append(Paragraph(f"<b>(=) SALDO FINAL DO MÊS:</b> {saldo_final:.2f} EUR", style_normal))
+    elements.append(Paragraph(f"<b>(=) SALDO FINAL DO MÊS:</b> <b>{saldo_final:.2f} EUR</b>", style_normal))
 
     def cabecalho_extrato(canvas_obj, doc_obj):
         desenhar_cabecalho_pdf(canvas_obj, doc_obj, "EXTRATO MENSAL", f"Período: {mes} {ano}")
 
-    doc.build(elements, onFirstPage=cabecalho_extrato, onLaterPages=cabecalho_extrato)
+    doc.build(elements, onFirstPage=cabecalho_extrato, onLaterPages=cabecalho_extrato, canvasmaker=NumberedCanvas)
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
@@ -334,17 +382,17 @@ def gerar_pdf_extrato(df, mes, ano, saldo_anterior):
 def gerar_pdf_relatorio_anual(ano, saldo_anterior, total_quotas, total_receitas, total_despesas, df_despesas_agrupadas):
     if not REPORTLAB_INSTALLED: return None
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=50)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=60)
     
     styles = getSampleStyleSheet()
-    style_normal = styles['Normal'].clone('style_normal')
-    style_normal.fontName = 'Helvetica'
-    style_normal.fontSize = 11
+    style_normal = styles["Normal"].clone("style_normal")
+    style_normal.fontName = "Helvetica"
+    style_normal.fontSize = 10
     style_normal.spaceAfter = 6
     
-    style_heading = styles['Heading2'].clone('style_heading')
-    style_heading.fontName = 'Helvetica-Bold'
-    style_heading.fontSize = 12
+    style_heading = styles["Heading2"].clone("style_heading")
+    style_heading.fontName = "Helvetica-Bold"
+    style_heading.fontSize = 11
     style_heading.spaceAfter = 10
     style_heading.spaceBefore = 15
 
@@ -355,27 +403,15 @@ def gerar_pdf_relatorio_anual(ano, saldo_anterior, total_quotas, total_receitas,
     if not df_despesas_agrupadas.empty:
         tabela_data = [["Descrição / Categoria", "Valor Total Gasto (EUR)"]]
         for _, row in df_despesas_agrupadas.iterrows():
-            tabela_data.append([str(row['Descrição']), f"{row['Valor']:.2f}"])
+            tabela_data.append([str(row["Descrição"]), f"{row['Valor']:.2f}"])
         
         t = Table(tabela_data, colWidths=[350, 140])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#64748b')), 
-            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('BOTTOMPADDING', (0,0), (-1,0), 10),
-            ('TOPPADDING', (0,0), (-1,0), 10),
-            ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#f8fafc')),
-            ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#e2e8f0')),
-            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
-        ]))
+        t.setStyle(obter_estilo_tabela_premium())
         elements.append(t)
     else:
         elements.append(Paragraph("Não existem despesas registadas neste ano civil.", style_normal))
 
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
 
     saldo_final = saldo_anterior + total_quotas + total_receitas - total_despesas
     elements.append(Paragraph(f"<b>2. RESUMO FINANCEIRO GLOBAL</b>", style_heading))
@@ -384,12 +420,12 @@ def gerar_pdf_relatorio_anual(ano, saldo_anterior, total_quotas, total_receitas,
     elements.append(Paragraph(f"<b>(+) Outras Receitas:</b> {total_receitas:.2f} EUR", style_normal))
     elements.append(Paragraph(f"<b>(-) Total de Despesas:</b> {total_despesas:.2f} EUR", style_normal))
     elements.append(Spacer(1, 5))
-    elements.append(Paragraph(f"<b>(=) SALDO FINAL DO ANO:</b> {saldo_final:.2f} EUR", style_normal))
+    elements.append(Paragraph(f"<b>(=) SALDO FINAL DO ANO:</b> <b>{saldo_final:.2f} EUR</b>", style_normal))
 
     def cabecalho_anual(canvas_obj, doc_obj):
         desenhar_cabecalho_pdf(canvas_obj, doc_obj, "RELATÓRIO ANUAL", f"Fecho de Contas: {ano}")
 
-    doc.build(elements, onFirstPage=cabecalho_anual, onLaterPages=cabecalho_anual)
+    doc.build(elements, onFirstPage=cabecalho_anual, onLaterPages=cabecalho_anual, canvasmaker=NumberedCanvas)
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
@@ -397,18 +433,18 @@ def gerar_pdf_relatorio_anual(ano, saldo_anterior, total_quotas, total_receitas,
 def gerar_pdf_ata(a):
     if not REPORTLAB_INSTALLED: return None
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=50)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=230, bottomMargin=60)
     
     styles = getSampleStyleSheet()
-    style_normal = styles['Normal'].clone('style_normal')
-    style_normal.fontName = 'Helvetica'
-    style_normal.fontSize = 11
+    style_normal = styles["Normal"].clone("style_normal")
+    style_normal.fontName = "Helvetica"
+    style_normal.fontSize = 10
     style_normal.spaceAfter = 10
-    style_normal.alignment = 4 # Justify
+    style_normal.alignment = 4 
     
-    style_heading = styles['Heading2'].clone('style_heading')
-    style_heading.fontName = 'Helvetica-Bold'
-    style_heading.fontSize = 12
+    style_heading = styles["Heading2"].clone("style_heading")
+    style_heading.fontName = "Helvetica-Bold"
+    style_heading.fontSize = 11
     style_heading.spaceAfter = 15
     
     elements = []
@@ -418,23 +454,23 @@ def gerar_pdf_ata(a):
     elements.append(Spacer(1, 15))
     
     if a.texto_ata:
-        for p in a.texto_ata.split('\n'):
+        for p in a.texto_ata.split("\n"):
             if p.strip():
-                elements.append(Paragraph(p.strip().replace('\n', '<br/>'), style_normal))
+                elements.append(Paragraph(p.strip().replace("\n", "<br/>"), style_normal))
                 
-    elements.append(Spacer(1, 30))
+    elements.append(Spacer(1, 25))
     elements.append(Paragraph("<i>Ata redigida e processada informaticamente pelo sistema A3.Cond.Gest.</i>", style_normal))
 
     def cabecalho_ata(canvas_obj, doc_obj):
         desenhar_cabecalho_pdf(canvas_obj, doc_obj, "ATA DE ASSEMBLEIA", f"Ref: ATA-{a.id:04d}")
 
-    doc.build(elements, onFirstPage=cabecalho_ata, onLaterPages=cabecalho_ata)
+    doc.build(elements, onFirstPage=cabecalho_ata, onLaterPages=cabecalho_ata, canvasmaker=NumberedCanvas)
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
 
 # ==========================================
-# CSS E LAYOUT
+# CSS E LAYOUT GLOBAL
 # ==========================================
 st.markdown("""
 <style>
@@ -482,18 +518,16 @@ def configurar_sidebar():
     str_fim = f"{ano_sel if idx_mes < 12 else ano_sel+1}-{idx_mes+1 if idx_mes < 12 else 1:02d}-01"
     mes_str = f"{idx_mes:02d}/{ano_sel}" 
     
+    st.sidebar.markdown("---")
+    st.sidebar.caption("💡 **Dica:** Altere entre o Modo Claro e Escuro clicando nos **⋮** no canto superior direito > **Settings** > **Theme**.")
+    
     return mes_sel, ano_sel, str_inicio, str_fim, mes_str
 
 # ==========================================
-# MÓDULOS DE PÁGINAS (SISTEMA & LOGIN)
+# MÓDULOS DE PÁGINAS
 # ==========================================
 def pagina_login():
-    import os
-    
-    # --- Espaçamento superior para centrar a caixa verticalmente ---
     st.markdown("<br><br><br>", unsafe_allow_html=True)
-    
-    # --- Ajuste inteligente das colunas para o tamanho ideal do cartão ---
     c1, c2, c3 = st.columns([1.2, 1.2, 1.2]) 
     
     with c2:
@@ -502,13 +536,10 @@ def pagina_login():
             return
             
         with st.container(border=True):
-            # 1. Logo centrado dentro do cartão
             if os.path.exists("logo.png"):
                 col_esp, col_img, col_esp2 = st.columns([1, 1.5, 1])
-                with col_img:
-                    st.image("logo.png", use_container_width=True)
+                with col_img: st.image("logo.png", use_container_width=True)
             
-            # 2. Cabeçalho formatado
             st.markdown("""
             <div style='text-align: center;'>
                 <h2 style='margin-bottom: 0px; color: #1e293b;'>A3.Cond.Gest</h2>
@@ -516,13 +547,11 @@ def pagina_login():
             </div>
             """, unsafe_allow_html=True)
             
-            # 3. Formulário com ícones
             with st.form("form_login", clear_on_submit=True):
                 user = st.text_input("👤 Nome de Utilizador", placeholder="Insira o seu utilizador")
                 pwd = st.text_input("🔒 Password", type="password", placeholder="Insira a sua password")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                # Botão em destaque (tipo "primary")
                 submit = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
                 
                 if submit:
@@ -554,7 +583,6 @@ def pagina_login():
                         else: 
                             st.error("❌ Credenciais incorretas. Tente novamente.")
                             
-            # 4. Rodapé institucional
             st.markdown("""
             <div style='text-align: center; margin-top: 15px;'>
                 <p style='color: #94a3b8; font-size: 11px;'>© 2026 Condomínio Seguro | Versão 2.0</p>
@@ -585,7 +613,7 @@ def pagina_dashboard_morador():
                     utilizador_ativo = session.get(Utilizador, st.session_state.user_id)
                     utilizador_ativo.password_hash = generate_password_hash(nova_pwd)
                     session.commit()
-                    st.session_state.toast = ("Password updated successfully!", "✅")
+                    st.session_state.toast = ("Password atualizada com sucesso!", "✅")
                     st.session_state.form_key += 1
                     st.rerun()
     
@@ -639,7 +667,7 @@ def pagina_acessos():
                                 perm_dashboard=True, perm_condominos=False, 
                                 perm_quotas=True, perm_financas=False, perm_recibos=True,
                                 perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
-                                perm_mural=True, # <--- PERMISSÃO MURAL AO CRIAR
+                                perm_mural=True,
                                 modo_leitura=False, perm_download_docs=True
                             )
                             try:
@@ -653,7 +681,7 @@ def pagina_acessos():
                                     perm_dashboard=True, perm_condominos=False, 
                                     perm_quotas=True, perm_financas=False, perm_recibos=True,
                                     perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
-                                    perm_mural=True, # <--- PERMISSÃO MURAL AO CRIAR
+                                    perm_mural=True,
                                     modo_leitura=False, perm_download_docs=True
                                 )
                                 try:
@@ -700,7 +728,7 @@ def pagina_acessos():
                             val_rec = st.checkbox("Emissão de Recibos", value=u_sel.perm_recibos, key=f"p_rec_{st.session_state.form_key}")
                         with col3:
                             st.write("**Operações**")
-                            val_mur = st.checkbox("Mural da Comunidade", value=u_sel.perm_mural, key=f"p_mur_{st.session_state.form_key}") # <--- CHECKBOX MURAL
+                            val_mur = st.checkbox("Mural da Comunidade", value=u_sel.perm_mural, key=f"p_mur_{st.session_state.form_key}")
                             val_ass = st.checkbox("Assembleias & Votações", value=u_sel.perm_assembleias, key=f"p_ass_{st.session_state.form_key}")
                             val_arq = st.checkbox("Arquivo Digital", value=u_sel.perm_arquivo, key=f"p_arq_{st.session_state.form_key}")
                             val_forn = st.checkbox("Fornecedores", value=u_sel.perm_fornecedores, key=f"p_forn_{st.session_state.form_key}")
@@ -711,7 +739,7 @@ def pagina_acessos():
                             u_sel.perm_download_docs = val_down
                             u_sel.perm_dashboard, u_sel.perm_condominos = val_dash, val_cond
                             u_sel.perm_quotas, u_sel.perm_financas, u_sel.perm_recibos = val_quotas, val_fin, val_rec
-                            u_sel.perm_mural, u_sel.perm_assembleias = val_mur, val_ass # <--- SALVA O MURAL
+                            u_sel.perm_mural, u_sel.perm_assembleias = val_mur, val_ass
                             u_sel.perm_arquivo, u_sel.perm_fornecedores, u_sel.perm_ocorrencias = val_arq, val_forn, val_oco
                             session.commit()
                             st.session_state.toast = ("Permissões atualizadas com sucesso!", "✅")
@@ -725,7 +753,6 @@ def pagina_dashboard():
     
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
-    # --- TÍTULO COM ÍCONE MATERIAL E SUBTÍTULO FORMATADO ---
     st.title(":material/dashboard: Dashboard")
     st.markdown(f"""
     <div style="margin-top: -15px; margin-bottom: 20px;">
@@ -736,10 +763,9 @@ def pagina_dashboard():
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
-    # --- KPIs Otimizados com Valores Financeiros Reais ---
     col1, col2, col3, col4 = st.columns(4)
     total_cond = session.query(Condomino).count()
-    saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo='Receita').scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo='Despesa').scalar() or 0.0)
+    saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo="Receita").scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo="Despesa").scalar() or 0.0)
 
     valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
     dividas_ativas = session.query(Quota).filter_by(paga=False).count()
@@ -753,12 +779,10 @@ def pagina_dashboard():
     col4.metric("Ocorrências Abertas", ocs_pendentes)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- Separadores do Painel ---
     tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
     meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
 
     with tab_geral:
-        # --- LINHA 1: Saúde Financeira Global ---
         c1, c2, c3 = st.columns(3)
         
         with c1:
@@ -767,9 +791,9 @@ def pagina_dashboard():
                 quotas_ano = session.query(Quota).filter(Quota.mes_ano.endswith(str(ano_sel))).all()
                 if quotas_ano:
                     df_q = pd.DataFrame([{"Estado": "Pagas", "Valor": q.valor} if q.paga else {"Estado": "Em Dívida", "Valor": q.valor} for q in quotas_ano])
-                    fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values='Valor', names='Estado', hole=0.4, color='Estado', color_discrete_map={'Pagas':'#2563eb', 'Em Dívida':'#ef4444'})
+                    fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values="Valor", names="Estado", hole=0.4, color="Estado", color_discrete_map={"Pagas":"#2563eb", "Em Dívida":"#ef4444"})
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
                     
                     total_gerado = sum(q.valor for q in quotas_ano)
                     total_pago = sum(q.valor for q in quotas_ano if q.paga)
@@ -787,37 +811,37 @@ def pagina_dashboard():
                 if dados_grafico:
                     df_fin_grouped = pd.DataFrame(dados_grafico).groupby(["Mês", "Tipo"]).sum().reset_index()
                     df_fin_grouped["Mês_Nome"] = df_fin_grouped["Mês"].map(meses_map)
-                    fig2 = px.bar(df_fin_grouped, x='Mês_Nome', y='Valor', color='Tipo', barmode='group', color_discrete_map={'Receita':'#2563eb', 'Despesa':'#ef4444'}, text_auto='.2f')
+                    fig2 = px.bar(df_fin_grouped, x="Mês_Nome", y="Valor", color="Tipo", barmode="group", color_discrete_map={"Receita":"#2563eb", "Despesa":"#ef4444"}, text_auto=".2f")
                     fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
                 else: st.info("Sem dados financeiros registados.")
                 
         with c3:
             with st.container(border=True):
                 st.subheader(f"Orçamento [{ano_sel}]")
                 orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
-                despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == 'Despesa', Movimento.data.startswith(str(ano_sel)))).all()
+                despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == "Despesa", Movimento.data.startswith(str(ano_sel)))).all()
                 despesas_ano = sum(d.valor for d in despesas_ano_lista)
                 
                 if orc and orc.valor_anual > 0:
                     fig_gauge = go.Figure(go.Indicator(
                         mode="gauge+number",
                         value=despesas_ano,
-                        number={'valueformat': ".2f", 'suffix': " €"},
-                        domain={'x': [0, 1], 'y': [0, 1]},
+                        number={"valueformat": ".2f", "suffix": " €"},
+                        domain={"x": [0, 1], "y": [0, 1]},
                         gauge={
-                            'axis': {'range': [None, orc.valor_anual], 'tickwidth': 1},
-                            'bar': {'color': "#1e293b"},
-                            'bgcolor': "white",
-                            'steps': [
-                                {'range': [0, orc.valor_anual * 0.7], 'color': '#bbf7d0'},
-                                {'range': [orc.valor_anual * 0.7, orc.valor_anual * 0.9], 'color': '#fef08a'},
-                                {'range': [orc.valor_anual * 0.9, orc.valor_anual * 1.5], 'color': '#fecaca'}
+                            "axis": {"range": [None, orc.valor_anual], "tickwidth": 1},
+                            "bar": {"color": "#1e293b"},
+                            "bgcolor": "white",
+                            "steps": [
+                                {"range": [0, orc.valor_anual * 0.7], "color": "#bbf7d0"},
+                                {"range": [orc.valor_anual * 0.7, orc.valor_anual * 0.9], "color": "#fef08a"},
+                                {"range": [orc.valor_anual * 0.9, orc.valor_anual * 1.5], "color": "#fecaca"}
                             ],
-                            'threshold': {
-                                'line': {'color': "red", 'width': 3},
-                                'thickness': 0.75,
-                                'value': orc.valor_anual
+                            "threshold": {
+                                "line": {"color": "red", "width": 3},
+                                "thickness": 0.75,
+                                "value": orc.valor_anual
                             }
                         }
                     ))
@@ -827,7 +851,7 @@ def pagina_dashboard():
                         margin=dict(t=30, b=10, l=20, r=20),
                         height=250
                     )
-                    st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
                     
                     percentagem = (despesas_ano / orc.valor_anual) * 100
                     if percentagem > 100:
@@ -837,7 +861,6 @@ def pagina_dashboard():
                 else: 
                     st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para definir o valor aprovado para este ano.")
 
-        # --- LINHA 2: Gestão Operacional e Comunitária ---
         st.markdown("<br>", unsafe_allow_html=True)
         r2_c1, r2_c2, r2_c3 = st.columns(3)
         
@@ -848,14 +871,14 @@ def pagina_dashboard():
                     df_desp = pd.DataFrame([{"Categoria": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
                     df_desp_grouped = df_desp.groupby("Categoria").sum().reset_index()
                     
-                    fig_donut = px.pie(df_desp_grouped, values='Valor', names='Categoria', hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
+                    fig_donut = px.pie(df_desp_grouped, values="Valor", names="Categoria", hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
                     fig_donut.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", 
                         plot_bgcolor="rgba(0,0,0,0)", 
                         margin=dict(t=10, b=10, l=10, r=10),
                         legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
                     )
-                    st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+                    st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
                 else:
                     st.info("Não existem despesas lançadas este ano para categorizar.")
                     
@@ -909,9 +932,9 @@ def pagina_dashboard():
                 df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
                 df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
                 
-                fig3 = px.bar(df_fracoes_grouped, x='Mês_Nome', y='Valor Pago', color='Fração', barmode='stack', text_auto='.0f')
+                fig3 = px.bar(df_fracoes_grouped, x="Mês_Nome", y="Valor Pago", color="Fração", barmode="stack", text_auto=".0f")
                 fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig3, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
             else: st.info("Sem pagamentos registados.")
 
     with tab_devedores:
@@ -924,9 +947,9 @@ def pagina_dashboard():
                 
                 c_graf, c_tab = st.columns([1.5, 1])
                 with c_graf:
-                    fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation='h', text_auto='.2f', color="Valor Total", color_continuous_scale="Reds")
-                    fig4.update_layout(yaxis={'categoryorder':'total ascending'}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig4, use_container_width=True, config={'displayModeBar': False})
+                    fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation="h", text_auto=".2f", color="Valor Total", color_continuous_scale="Reds")
+                    fig4.update_layout(yaxis={"categoryorder":"total ascending"}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
                 with c_tab:
                     st.dataframe(df_top, hide_index=True, column_config={"Quotas em Atraso": st.column_config.NumberColumn("Nº Quotas", format="%d"), "Valor Total": st.column_config.NumberColumn("Em Dívida (€)", format="%.2f €")}, use_container_width=True)
             else:
@@ -943,28 +966,28 @@ def pagina_condominos():
             if ficheiro_import is not None:
                 if st.button("Processar Importação", width="stretch"):
                     try:
-                        if ficheiro_import.name.endswith('.csv'): 
+                        if ficheiro_import.name.endswith(".csv"): 
                             try:
-                                df_imp = pd.read_csv(ficheiro_import, encoding='utf-8', sep=None, engine='python')
+                                df_imp = pd.read_csv(ficheiro_import, encoding="utf-8", sep=None, engine="python")
                             except UnicodeDecodeError:
                                 ficheiro_import.seek(0)
-                                df_imp = pd.read_csv(ficheiro_import, encoding='latin1', sep=None, engine='python')
+                                df_imp = pd.read_csv(ficheiro_import, encoding="latin1", sep=None, engine="python")
                         else: 
                             df_imp = pd.read_excel(ficheiro_import)
                         
                         novos = 0
                         for _, row in df_imp.iterrows():
-                            fracao = str(row.get('Fração', '')).strip()
-                            if fracao and fracao != 'nan':
+                            fracao = str(row.get("Fração", "")).strip()
+                            if fracao and fracao != "nan":
                                 existe = session.query(Condomino).filter_by(fracao=fracao).first()
                                 if not existe:
                                     novo_c = Condomino(
-                                        nome=str(row.get('Nome', 'Sem Nome')).strip(),
+                                        nome=str(row.get("Nome", "Sem Nome")).strip(),
                                         fracao=fracao,
-                                        nif=str(row.get('NIF', '')).replace('.0','').replace('nan',''),
-                                        telefone=str(row.get('Telefone', '')).replace('.0','').replace('nan',''),
-                                        email=str(row.get('Email', '')).strip().replace('nan',''),
-                                        permilagem=float(row.get('Permilagem', 0.0)) if pd.notna(row.get('Permilagem')) else 0.0
+                                        nif=str(row.get("NIF", "")).replace(".0","").replace("nan",""),
+                                        telefone=str(row.get("Telefone", "")).replace(".0","").replace("nan",""),
+                                        email=str(row.get("Email", "")).strip().replace("nan",""),
+                                        permilagem=float(row.get("Permilagem", 0.0)) if pd.notna(row.get("Permilagem")) else 0.0
                                     )
                                     session.add(novo_c)
                                     novos += 1
@@ -1034,7 +1057,6 @@ def pagina_condominos():
 def pagina_quotas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
-    # --- TÍTULO COM ÍCONE MATERIAL E SUBTÍTULO FORMATADO IGUAL AO DASHBOARD ---
     st.title(":material/payments: Gestão de Quotas")
     st.markdown(f"""
     <div style="margin-top: -15px; margin-bottom: 20px;">
@@ -1157,14 +1179,13 @@ def pagina_financas():
         orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
         if orc and orc.valor_anual > 0:
             with st.container(border=True):
-                despesas_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Despesa', Movimento.data.startswith(str(ano_sel)))).scalar() or 0.0
+                despesas_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Despesa", Movimento.data.startswith(str(ano_sel)))).scalar() or 0.0
                 pct = (despesas_ano / orc.valor_anual) * 100
                 st.write(f"**Execução Orçamental ({ano_sel}):** {despesas_ano:.2f}€ gastos de {orc.valor_anual:.2f}€ ({pct:.1f}%)")
                 st.progress(min(pct / 100, 1.0))
 
         if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
             st.markdown("<br>", unsafe_allow_html=True)
-            
             c_add_man, c_add_imp = st.columns(2)
             
             with c_add_man:
@@ -1183,40 +1204,32 @@ def pagina_financas():
                                 st.session_state.form_key += 1; st.rerun()
 
             with c_add_imp:
-                with st.expander(":material/upload_file: Importar via Excel/CSV", expanded=False):
+                with st.expander(":material/upload_file: Importar Extrato Bancário", expanded=False):
                     st.write("Faça upload de um ficheiro com as colunas exatas: `Tipo,Descrição,Valor,Data`. O Tipo deve ser **Despesa** ou **Receita**.")
                     ficheiro_import_fin = st.file_uploader("Escolher ficheiro financeiro", type=["csv", "xlsx"], key=f"file_up_fin_{st.session_state.form_key}")
                     if ficheiro_import_fin is not None:
                         if st.button("Processar Importação", width="stretch", type="primary"):
                             try:
-                                if ficheiro_import_fin.name.endswith('.csv'): 
+                                if ficheiro_import_fin.name.endswith(".csv"): 
                                     try:
-                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding='utf-8', sep=None, engine='python')
+                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding="utf-8", sep=None, engine="python")
                                     except UnicodeDecodeError:
                                         ficheiro_import_fin.seek(0)
-                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding='latin1', sep=None, engine='python')
+                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding="latin1", sep=None, engine="python")
                                 else: 
                                     df_imp = pd.read_excel(ficheiro_import_fin)
                                 
                                 novos_movs = 0
                                 for _, row in df_imp.iterrows():
-                                    tipo = str(row.get('Tipo', '')).strip().capitalize()
-                                    descricao = str(row.get('Descrição', '')).strip()
-                                    
-                                    valor_raw = row.get('Valor', 0.0)
-                                    valor = pd.to_numeric(str(valor_raw).replace(',', '.'), errors='coerce')
-                                    
-                                    data_raw = row.get('Data', '')
-                                    data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != '' else hoje.strftime("%Y-%m-%d")
+                                    tipo = str(row.get("Tipo", "")).strip().capitalize()
+                                    descricao = str(row.get("Descrição", "")).strip()
+                                    valor_raw = row.get("Valor", 0.0)
+                                    valor = pd.to_numeric(str(valor_raw).replace(",", "."), errors="coerce")
+                                    data_raw = row.get("Data", "")
+                                    data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != "" else hoje.strftime("%Y-%m-%d")
 
                                     if tipo in ["Despesa", "Receita"] and descricao and pd.notna(valor) and float(valor) > 0:
-                                        novo_m = Movimento(
-                                            tipo=tipo,
-                                            descricao=descricao,
-                                            valor=float(valor),
-                                            data=data_mov
-                                        )
-                                        session.add(novo_m)
+                                        session.add(Movimento(tipo=tipo, descricao=descricao, valor=float(valor), data=data_mov))
                                         novos_movs += 1
                                         
                                 if novos_movs > 0:
@@ -1225,15 +1238,15 @@ def pagina_financas():
                                     st.session_state.form_key += 1
                                     st.rerun()
                                 else:
-                                    st.warning("Não foram importados registos (verifique se o Tipo é 'Despesa'/'Receita' e o Valor é > 0).")
+                                    st.warning("Não foram importados registos válidos.")
                             except Exception as e:
-                                st.error(f"Erro ao processar o ficheiro. Detalhe técnico: {e}")
+                                st.error(f"Erro ao processar o ficheiro: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         movs = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim)).all()
         q_ant = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento < str_inicio)).scalar() or 0.0
-        rec_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Receita', Movimento.data < str_inicio)).scalar() or 0.0
-        desp_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Despesa', Movimento.data < str_inicio)).scalar() or 0.0
+        rec_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Receita", Movimento.data < str_inicio)).scalar() or 0.0
+        desp_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Despesa", Movimento.data < str_inicio)).scalar() or 0.0
         saldo_anterior = (q_ant + rec_ant) - desp_ant
         q_atual = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento >= str_inicio, Quota.data_pagamento < str_fim)).scalar() or 0.0
 
@@ -1250,7 +1263,7 @@ def pagina_financas():
             st.markdown("<br>", unsafe_allow_html=True)
             if REPORTLAB_INSTALLED:
                 pdf_bytes = gerar_pdf_extrato(df_extrato, mes_sel, ano_sel, saldo_anterior)
-                if pdf_bytes: st.download_button(":material/picture_as_pdf: Exportar PDF (Mês)", data=pdf_bytes, file_name=f"Extrato_{mes_sel}_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
+                if pdf_bytes: st.download_button(":material/picture_as_pdf: Exportar PDF (Mês)", data=pdf_bytes, file_name=f"Extrato_{mes_sel}_{ano_sel}.pdf", mime="application/pdf", width="stretch")
         
         if movs or q_atual > 0:
             with st.container(border=True):
@@ -1268,13 +1281,13 @@ def pagina_financas():
         str_fim_ano = f"{ano_sel+1}-01-01"
         
         q_ant_ano = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento < str_inicio_ano)).scalar() or 0.0
-        rec_ant_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Receita', Movimento.data < str_inicio_ano)).scalar() or 0.0
-        desp_ant_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Despesa', Movimento.data < str_inicio_ano)).scalar() or 0.0
+        rec_ant_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Receita", Movimento.data < str_inicio_ano)).scalar() or 0.0
+        desp_ant_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Despesa", Movimento.data < str_inicio_ano)).scalar() or 0.0
         saldo_anterior_ano = (q_ant_ano + rec_ant_ano) - desp_ant_ano
         
         q_atual_ano = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento >= str_inicio_ano, Quota.data_pagamento < str_fim_ano)).scalar() or 0.0
-        rec_atual_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Receita', Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).scalar() or 0.0
-        desp_atual_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Despesa', Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).scalar() or 0.0
+        rec_atual_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Receita", Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).scalar() or 0.0
+        desp_atual_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Despesa", Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).scalar() or 0.0
         saldo_final_ano = saldo_anterior_ano + q_atual_ano + rec_atual_ano - desp_atual_ano
         
         c1, c2, c3, c4 = st.columns(4)
@@ -1283,7 +1296,7 @@ def pagina_financas():
         c3.metric("Total Despesas", f"{desp_atual_ano:.2f} €")
         c4.metric("Saldo Final do Ano", f"{saldo_final_ano:.2f} €")
         
-        despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == 'Despesa', Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).all()
+        despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == "Despesa", Movimento.data >= str_inicio_ano, Movimento.data < str_fim_ano)).all()
         df_despesas_ano = pd.DataFrame([{"Descrição": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
         if not df_despesas_ano.empty:
             df_desp_agrupadas = df_despesas_ano.groupby("Descrição")["Valor"].sum().reset_index().sort_values(by="Valor", ascending=False)
@@ -1296,7 +1309,7 @@ def pagina_financas():
         if REPORTLAB_INSTALLED:
             pdf_bytes_anual = gerar_pdf_relatorio_anual(ano_sel, saldo_anterior_ano, q_atual_ano, rec_atual_ano, desp_atual_ano, df_desp_agrupadas)
             with col_pdf:
-                st.download_button("📥 Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch", type="secondary")
+                st.download_button("📥 Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch")
             
             with col_mail:
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
@@ -1304,14 +1317,12 @@ def pagina_financas():
                         condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                         emails_enviados = 0
                         for c in condominos_com_email:
-                            corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel} para sua análise e arquivo.\n\nCom os melhores cumprimentos,\nA Administração."
+                            corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.\n\nCumprimentos,\nA Administração."
                             if enviar_email_real(c.email, f"Relatório de Contas Anual - {ano_sel}", corpo_email, anexo_bytes=pdf_bytes_anual, nome_anexo=f"Relatorio_Contas_{ano_sel}.pdf"):
                                 emails_enviados += 1
                         if emails_enviados > 0: st.success(f"Relatório enviado a {emails_enviados} condóminos com sucesso!")
-                        else: st.warning("Não existem condóminos com email registado para envio.")
-        else:
-            st.warning("⚠️ Instale o 'reportlab' para gerar PDFs.")
-            
+                        else: st.warning("Não existem condóminos com email registado.")
+        
         with st.container(border=True):
             st.write("**Detalhamento das Despesas do Ano:**")
             if not df_desp_agrupadas.empty:
@@ -1326,6 +1337,7 @@ def pagina_recibos():
         q_pagas = session.query(Quota).filter(Quota.paga == True).order_by(Quota.data_pagamento.desc()).all()
     else:
         q_pagas = session.query(Quota).filter(and_(Quota.paga == True, Quota.condomino_id == st.session_state.condomino_id)).order_by(Quota.data_pagamento.desc()).all()
+    
     if not q_pagas: st.warning("Ainda não existem quotas pagas registadas no sistema.")
     else:
         st.write(":material/touch_app: **Clique numa linha para gerar e visualizar o recibo de pagamento:**")
@@ -1338,14 +1350,14 @@ def pagina_recibos():
                 q = session.get(Quota, int(df_recibos.iloc[evento_rec.selection.rows[0]]["ID"]))
                 st.info(f":material/receipt: Recibo selecionado: **{q.valor:.2f}€** referente a **{q.mes_ano}** (Fração {q.condomino.fracao})")
 
-                periodo_seguro = q.mes_ano.replace('/', '-')
+                periodo_seguro = q.mes_ano.replace("/", "-")
                 nome_pdf = f"Recibo_{q.condomino.nome.replace(' ', '_')}_{q.condomino.fracao}_{periodo_seguro}"
                 nif_display = q.condomino.nif if q.condomino.nif else "N/A"
                 img_base64 = get_image_base64(caminho_logo)
-                logo_html = f'<img src="data:image/png;base64,{img_base64}" class="logo-img" style="max-height: 80px; width: auto; object-fit: contain;">' if img_base64 else ''
+                logo_html = f'<img src="data:image/png;base64,{img_base64}" class="logo-img" style="max-height: 80px; width: auto; object-fit: contain;">' if img_base64 else ""
 
                 html_recibo = f"""
-                <div style="border: 1px solid #e2e8f0; padding: 40px; border-radius: 12px; background-color: #ffffff; color: #1e293b; max-width: 850px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                <div style="border: 1px solid #e2e8f0; padding: 40px; border-radius: 12px; background-color: #ffffff; color: #1e293b; max-width: 850px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); font-family: Arial, sans-serif;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
                         <div style="flex: 1;">
                             {logo_html}
@@ -1353,7 +1365,7 @@ def pagina_recibos():
                             <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.6;">{config["MORADA_CONDOMINIO"]}<br><strong>NIF:</strong> {config["NIF_CONDOMINIO"]}<br><strong>IBAN:</strong> {config["IBAN_CONDOMINIO"]}</p>
                         </div>
                         <div style="text-align: right; flex: 1;">
-                            <h1 style="margin: 0 0 10px 0; color: #0f172a; letter-spacing: 1px; font-size: 28px;">RECIBO</h1>
+                            <h1 style="margin: 0 0 10px 0; color: #0f172a; font-size: 28px;">RECIBO</h1>
                             <p style="margin: 5px 0; font-size: 14px; color: #334155;"><strong>Nº Fatura/Recibo:</strong> #{q.id:05d}</p>
                             <p style="margin: 5px 0; font-size: 14px; color: #334155;"><strong>Data:</strong> {q.data_pagamento}</p>
                         </div>
@@ -1361,7 +1373,7 @@ def pagina_recibos():
                     <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 25px 0;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
                         <div style="flex: 1;">
-                            <p style="margin: 0 0 10px 0; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><strong>Dados do Condómino</strong></p>
+                            <p style="margin: 0 0 10px 0; color: #64748b; font-size: 12px; text-transform: uppercase;"><strong>Dados do Condómino</strong></p>
                             <p style="margin: 4px 0; font-size: 15px;"><strong>Nome:</strong> {q.condomino.nome}</p>
                             <p style="margin: 4px 0; font-size: 15px;"><strong>Fração:</strong> {q.condomino.fracao}</p>
                         </div>
@@ -1371,14 +1383,14 @@ def pagina_recibos():
                         </div>
                     </div>
                     <div style="background-color: #f8fafc; padding: 25px; border-radius: 8px; border-left: 6px solid #2563eb; margin-top: 20px;">
-                        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #334155;">Declaramos que recebemos a quantia de <strong>{q.valor:.2f} €</strong> (Euros), referente ao pagamento da quota de condomínio do período de <strong>{q.mes_ano}</strong>.</p>
+                        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #334155;">Declaramos que recebemos a quantia de <strong>{q.valor:.2f} €</strong>, referente ao pagamento da quota de condomínio de <strong>{q.mes_ano}</strong>.</p>
                     </div>
                     <p style="text-align: center; color: #94a3b8; font-size: 11px; margin-top: 40px; border-top: 1px solid #f1f5f9; padding-top: 20px;">
                         <em>Documento processado por computador e sem obrigatoriedade de assinatura.</em>
                     </p>
                 </div>
                 """
-                st.markdown(html_recibo.replace('\n', ''), unsafe_allow_html=True)
+                st.markdown(html_recibo.replace("\n", ""), unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 col1, col2 = st.columns(2)
@@ -1386,26 +1398,22 @@ def pagina_recibos():
                     st.write("#### :material/print: 1. Imprimir / Guardar PDF")
                     if REPORTLAB_INSTALLED:
                         pdf_bytes = gerar_pdf_recibo(q)
-                        st.download_button(":material/picture_as_pdf: Descarregar Recibo (PDF)", data=pdf_bytes, file_name=f"{nome_pdf}.pdf", mime="application/pdf", type="secondary", width="stretch")
-                    else: st.warning("⚠️ Instale o 'reportlab' no terminal para gerar PDFs.")
+                        st.download_button(":material/download: Descarregar Recibo (PDF)", data=pdf_bytes, file_name=f"{nome_pdf}.pdf", mime="application/pdf", width="stretch")
                 with col2:
                     st.write("#### :material/mail: 2. Enviar por Email")
                     if not st.session_state.modo_leitura:
                         if st.session_state.perfil == "Admin":
-                            if st.button(":material/send: Enviar Confirmação (Sem PDF)", width="stretch"):
+                            if st.button(":material/send: Enviar Confirmação Simples", width="stretch"):
                                 if q.condomino.email:
-                                    corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos a receção do pagamento da quota referente a {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
-                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - Quota {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
+                                    corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
+                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
                                 else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
                                 if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
                                     if q.condomino.email:
-                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo em formato PDF para os seus registos.\nA Administração."
-                                        if enviar_email_real(q.condomino.email, f"Recibo de Pagamento - Quota {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado com sucesso!", icon="🎉")
-                                    else: st.error("Condómino sem email na ficha.")
-                        else: st.info("A funcionalidade de envio automático de emails é exclusiva da Administração.")
-                    else: st.warning("Envio de emails bloqueado no Modo Leitura.")
-        else: st.caption("👈 Aguardando seleção na tabela...")
+                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo oficial em PDF.\nA Administração."
+                                        if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado!", icon="🎉")
+                                    else: st.error("Condómino sem email.")
 
 def pagina_documentos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1416,32 +1424,20 @@ def pagina_documentos():
             with st.form("form_upload"):
                 st.text_input("Carregado por", value=st.session_state.username, disabled=True)
                 categoria = st.selectbox("Categoria", ["Atas de Assembleia", "Apólices de Seguro", "Faturas e Recibos", "Contratos", "Manuais", "Outros"], key=f"d_cat_{st.session_state.form_key}")
-                ficheiro = st.file_uploader("Selecione o ficheiro", type=['pdf', 'jpg', 'png', 'jpeg'], key=f"d_f_{st.session_state.form_key}")
+                ficheiro = st.file_uploader("Selecione o ficheiro", type=["pdf", "jpg", "png", "jpeg"], key=f"d_f_{st.session_state.form_key}")
                 
                 if st.form_submit_button("Guardar Documento") and ficheiro is not None:
+                    if not os.path.exists("uploads"): os.makedirs("uploads")
                     caminho = os.path.join("uploads", ficheiro.name)
                     with open(caminho, "wb") as f: f.write(ficheiro.getbuffer())
                     
-                    session.add(Documento(
-                        nome_ficheiro=ficheiro.name, 
-                        categoria=categoria, 
-                        caminho=caminho,
-                        carregado_por=st.session_state.username
-                    ))
+                    session.add(Documento(nome_ficheiro=ficheiro.name, categoria=categoria, caminho=caminho, carregado_por=st.session_state.username))
                     session.commit(); st.session_state.form_key += 1; st.rerun()
 
     docs = session.query(Documento).order_by(Documento.id.desc()).all()
     if docs:
         with st.container(border=True):
-            df_docs = pd.DataFrame([
-                {
-                    "ID": d.id, 
-                    "Data": d.data_upload, 
-                    "Categoria": d.categoria, 
-                    "Nome": d.nome_ficheiro,
-                    "Utilizador": d.carregado_por if d.carregado_por else "Sistema/Antigo"
-                } for d in docs
-            ])
+            df_docs = pd.DataFrame([{"ID": d.id, "Data": d.data_upload, "Categoria": d.categoria, "Nome": d.nome_ficheiro, "Utilizador": d.carregado_por if d.carregado_por else "Sistema/Antigo"} for d in docs])
             evento_doc = st.dataframe(df_docs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento_doc.selection.rows:
@@ -1456,8 +1452,8 @@ def pagina_documentos():
                 if st.session_state.perm_download_docs:
                     try:
                         with open(doc_obj.caminho, "rb") as file: col_down.download_button("📥 Baixar", data=file, file_name=doc_obj.nome_ficheiro, width="stretch")
-                    except FileNotFoundError: col_down.error("Perdido.")
-                else: col_down.warning("🚫 Sem permissão")
+                    except FileNotFoundError: col_down.error("Ficheiro físico não encontrado.")
+                else: col_down.warning("🚫 Sem permissão de download")
                     
                 if not st.session_state.modo_leitura:
                     pode_apagar = (st.session_state.perfil == "Admin") or (doc_obj.carregado_por == st.session_state.username)
@@ -1491,7 +1487,7 @@ def pagina_fornecedores():
                     e = st.text_input("Email", value=val_e, key=f"f_e_{st.session_state.form_key}")
                     nif_input = st.text_input("NIF", value=val_nif, key=f"f_nif_{st.session_state.form_key}")
                     iban_input = st.text_input("IBAN", value=val_iban, key=f"f_iban_{st.session_state.form_key}")
-                    obs = st.text_area("Observações (Horários, Notas...)", value=val_obs, key=f"f_obs_{st.session_state.form_key}")
+                    obs = st.text_area("Observações", value=val_obs, key=f"f_obs_{st.session_state.form_key}")
                 
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("Guardar Fornecedor"):
@@ -1533,7 +1529,6 @@ def pagina_fornecedores():
                         st.session_state.edit_id = id_sel; st.session_state.edit_type = "forn"; st.session_state.form_key += 1; st.rerun()
                     if c_del.button(":material/delete: Apagar", width="stretch"):
                         session.delete(forn_obj); session.commit(); st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
-        else: st.caption("👈 Selecione um contacto na tabela para ver mais detalhes.")
     else: st.info("Ainda não existem fornecedores registados.")
 
 def pagina_ocorrencias():
@@ -1546,16 +1541,17 @@ def pagina_ocorrencias():
             with st.form("f_oc"):
                 st.text_input("Reportado por", value=st.session_state.username, disabled=True)
                 tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
-                desc = st.text_area("Descrição detalhada do problema *", key=f"o_desc_{st.session_state.form_key}")
+                desc = st.text_area("Descrição detalhada do problem *", key=f"o_desc_{st.session_state.form_key}")
                 
                 st.write("**Provas Fotográficas (Opcional)**")
                 c1, c2 = st.columns(2)
-                with c1: foto1 = st.file_uploader("Fotografia 1", type=['jpg', 'jpeg', 'png'], key=f"o_f1_{st.session_state.form_key}")
-                with c2: foto2 = st.file_uploader("Fotografia 2", type=['jpg', 'jpeg', 'png'], key=f"o_f2_{st.session_state.form_key}")
+                with c1: foto1 = st.file_uploader("Fotografia 1", type=["jpg", "jpeg", "png"], key=f"o_f1_{st.session_state.form_key}")
+                with c2: foto2 = st.file_uploader("Fotografia 2", type=["jpg", "jpeg", "png"], key=f"o_f2_{st.session_state.form_key}")
                 
                 if st.form_submit_button("Reportar Ocorrência"):
                     if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
                     else:
+                        if not os.path.exists("uploads"): os.makedirs("uploads")
                         caminho_f1, caminho_f2 = None, None
                         timestamp_str = str(int(time.time()))
                         
@@ -1566,24 +1562,14 @@ def pagina_ocorrencias():
                             caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
                             with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
 
-                        session.add(Ocorrencia(
-                            titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"),
-                            criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2
-                        ))
+                        session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"), criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2))
                         session.commit(); st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
                         st.session_state.form_key += 1; st.rerun()
 
     ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
     if ocs:
         with st.container(border=True):
-            df_ocs = pd.DataFrame([
-                {
-                    "ID": o.id, "Data": o.data_criacao, 
-                    "Utilizador": o.criado_por if o.criado_por else "N/D", 
-                    "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", 
-                    "Assunto": o.titulo
-                } for o in ocs
-            ])
+            df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
             evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
         
         if evento_oc.selection.rows:
@@ -1617,13 +1603,13 @@ def pagina_assembleias():
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             with st.expander(":material/add_alert: Agendar Nova Assembleia"):
                 with st.form("f_ass"):
-                    tit = st.text_input("Título (ex: Assembleia Ordinária 2026) *", key=f"a_t_{st.session_state.form_key}")
+                    tit = st.text_input("Título *", key=f"a_t_{st.session_state.form_key}")
                     data_reuniao = st.date_input("Data da Reunião", key=f"a_d_{st.session_state.form_key}")
                     assuntos = st.text_area("Ordem de Trabalhos (Assuntos) *", key=f"a_a_{st.session_state.form_key}")
-                    enviar_email_convocatoria = st.checkbox("Enviar convocatória por email a todos os condóminos", value=True, key=f"a_e_{st.session_state.form_key}")
+                    enviar_email_convocatoria = st.checkbox("Enviar convocatória por email a todos", value=True, key=f"a_e_{st.session_state.form_key}")
                     
                     if st.form_submit_button("Agendar"):
-                        if not tit.strip() or not assuntos.strip(): st.error("⚠️ O Título e a Ordem de Trabalhos são obrigatórios.")
+                        if not tit.strip() or not assuntos.strip(): st.error("⚠️ Título e Ordem de Trabalhos obrigatórios.")
                         else:
                             session.add(Assembleia(titulo=tit, data_agendada=data_reuniao.strftime("%Y-%m-%d"), assuntos=assuntos))
                             session.commit()
@@ -1631,10 +1617,10 @@ def pagina_assembleias():
                                 condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                 emails_enviados = 0
                                 for c in condominos_com_email:
-                                    corpo = f"Exmo(a) Sr(a) {c.nome},\n\nServe o presente para informar o agendamento da reunião de condomínio: {tit}.\n\nData: {data_reuniao.strftime('%d/%m/%Y')}\n\nOrdem de Trabalhos:\n{assuntos}\n\nA Administração."
+                                    corpo = f"Exmo(a) Sr(a) {c.nome},\n\nConvocatória para a reunião de condomínio: {tit}.\nData: {data_reuniao.strftime('%d/%m/%Y')}\n\nAssuntos:\n{assuntos}\n\nAdministração."
                                     if enviar_email_real(c.email, f"Convocatória - {tit}", corpo): emails_enviados += 1
-                                st.session_state.toast = (f"Assembleia agendada! {emails_enviados} emails enviados.", "✅")
-                            else: st.session_state.toast = ("Assembleia agendada com sucesso!", "✅")
+                                st.session_state.toast = (f"Assembleia agendada! {emails_enviados} convites enviados.", "✅")
+                            else: st.session_state.toast = ("Assembleia agendada!", "✅")
                             st.session_state.form_key += 1; st.rerun()
 
         reunioes = session.query(Assembleia).order_by(Assembleia.id.desc()).all()
@@ -1644,88 +1630,57 @@ def pagina_assembleias():
                     col_txt, col_act = st.columns([4, 1])
                     estado = "✅ Realizada" if r.realizada else "⏳ Agendada"
                     col_txt.markdown(f"### {r.titulo} ({estado})")
-                    col_txt.write(f"**Data:** {r.data_agendada}")
-                    col_txt.write(f"**Ordem de Trabalhos:**\n{r.assuntos}")
+                    col_txt.write(f"**Data:** {r.data_agendada} | **Ordem de Trabalhos:** {r.assuntos}")
                     
                     if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                         if not r.realizada:
-                            if col_act.button(":material/check_circle: Marcar Realizada", key=f"real_{r.id}", width="stretch"): 
-                                r.realizada = True; session.commit(); st.rerun()
+                            if col_act.button("Mark Realizada", key=f"real_{r.id}", width="stretch"): r.realizada = True; session.commit(); st.rerun()
                         else:
-                            if col_act.button(":material/undo: Reabrir Reunião", key=f"undo_{r.id}", width="stretch"): 
-                                r.realizada = False; session.commit(); st.rerun()
-                        
-                        if col_act.button(":material/delete: Apagar", key=f"del_ass_{r.id}", width="stretch"): 
-                            session.delete(r); session.commit(); st.rerun()
+                            if col_act.button("Reabrir", key=f"undo_{r.id}", width="stretch"): r.realizada = False; session.commit(); st.rerun()
+                        if col_act.button("🗑️ Eliminar", key=f"del_ass_{r.id}", width="stretch"): session.delete(r); session.commit(); st.rerun()
                             
                     if r.realizada:
                         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-                            with st.expander(":material/edit_document: Redigir / Gerar Ata", expanded=False):
-                                texto_por_defeito = f"Ao xxx dia do mês de xxx de dois mil e vinte e xx pelas xx horas e xx minutos,\nreuniram no hall do prédio, a assembleia extraordinária de condóminos do condomínio do\nedifício em propriedade horizontal da Praceta Antero de Quental, Nº5, freguesia de Quinta do\nAnjo, conselho de Palmela, NIPC 901571253, para deliberar sobre os seguintes assuntos:\n\n{r.assuntos}\n\n[Escreva aqui as decisões tomadas...]"
-                                texto_atual = r.texto_ata if r.texto_ata else texto_por_defeito
-                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=250, key=f"ata_txt_{r.id}")
+                            with st.expander("📝 Redigir / Exportar Ata Digital", expanded=False):
+                                texto_atual = r.texto_ata if r.texto_ata else "Decisões tomadas na reunião de condomínio..."
+                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=150, key=f"ata_txt_{r.id}")
+                                if st.button("💾 Gravar Ata", key=f"save_{r.id}", type="primary"):
+                                    r.texto_ata = novo_texto; session.commit(); st.toast("Gravado!", icon="✅")
                                 
-                                if st.button("💾 Gravar Texto da Ata", key=f"save_{r.id}", type="primary", width="stretch"):
-                                    r.texto_ata = novo_texto
-                                    session.commit()
-                                    st.session_state.toast = ("Texto gravado com sucesso!", "✅")
-                                    st.rerun()
-                                
-                                if r.texto_ata:
-                                    st.markdown("---")
-                                    st.write("**Ações Disponíveis (PDF):**")
+                                if r.texto_ata and REPORTLAB_INSTALLED:
+                                    pdf_ata = gerar_pdf_ata(r)
+                                    nome_ficheiro = f"Ata_{r.data_agendada}_{r.id}.pdf"
                                     
-                                    if REPORTLAB_INSTALLED:
-                                        pdf_ata = gerar_pdf_ata(r)
-                                        nome_ficheiro = f"Ata_{r.data_agendada}_{r.id}.pdf"
+                                    c_d, c_a, c_m = st.columns(3)
+                                    c_d.download_button("📥 Baixar PDF", data=pdf_ata, file_name=nome_ficheiro, mime="application/pdf")
+                                    if c_a.button("🗂️ Arquivar no Portal", key=f"arq_{r.id}"):
+                                        if not os.path.exists("uploads"): os.makedirs("uploads")
                                         caminho = os.path.join("uploads", nome_ficheiro)
-                                        
-                                        col_down, col_arq, col_mail = st.columns(3)
-                                        with col_down:
-                                            st.download_button("📥 1. Descarregar PDF", data=pdf_ata, file_name=nome_ficheiro, mime="application/pdf", use_container_width=True)
-                                            
-                                        with col_arq:
-                                            if st.button("🗂️ 2. Arquivar no Sistema", key=f"arq_{r.id}", use_container_width=True):
-                                                with open(caminho, "wb") as f: f.write(pdf_ata)
-                                                doc_existe = session.query(Documento).filter_by(nome_ficheiro=nome_ficheiro).first()
-                                                if not doc_existe:
-                                                    session.add(Documento(nome_ficheiro=nome_ficheiro, category="Atas de Assembleia", caminho=caminho))
-                                                    session.commit()
-                                                    st.session_state.toast = ("Ata arquivada com sucesso no Arquivo Digital!", "🗂️")
-                                                else:
-                                                    st.session_state.toast = ("Esta ata já se encontra arquivada.", "ℹ️")
-                                                st.rerun()
-                                                
-                                        with col_mail:
-                                            if st.button("📧 3. Enviar por Email", key=f"mail_{r.id}", use_container_width=True):
-                                                conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
-                                                emails_enviados = 0
-                                                for c in conds_email:
-                                                    corpo = f"Exmo(a) Sr(a) {c.nome},\n\nSegue em anexo a ata referente à assembleia de {r.data_agendada}.\n\nCom os melhores cumprimentos,\nA Administração."
-                                                    if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", corpo, anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro):
-                                                        emails_enviados += 1
-                                                
-                                                if emails_enviados > 0: st.session_state.toast = (f"Ata enviada para {emails_enviados} condóminos!", "📧")
-                                                else: st.session_state.toast = ("Nenhum condómino com email registado para envio.", "⚠️")
-                                                st.rerun()
-                                    else: st.error("⚠️ Instale o 'reportlab' para gerar a ata em PDF.")
+                                        with open(caminho, "wb") as f: f.write(pdf_ata)
+                                        if not session.query(Documento).filter_by(nome_ficheiro=nome_ficheiro).first():
+                                            session.add(Documento(nome_ficheiro=nome_ficheiro, categoria="Atas de Assembleia", caminho=caminho, carregado_por="Sistema"))
+                                            session.commit(); st.success("Arquivada!")
+                                    if c_m.button("📧 Enviar por Email", key=f"mail_{r.id}"):
+                                        conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
+                                        enviados = 0
+                                        for c in conds_email:
+                                            if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Segue em anexo a ata.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
+                                        st.success(f"Enviada para {enviados} proprietários!")
                         else:
                             if r.texto_ata:
-                                with st.expander(":material/description: Ver Ata da Reunião"):
+                                with st.expander("👁️ Visualizar Ata"):
                                     st.write(r.texto_ata)
                                     if REPORTLAB_INSTALLED:
-                                        pdf_ata = gerar_pdf_ata(r)
-                                        st.download_button(":material/download: Descarregar PDF da Ata", data=pdf_ata, file_name=f"Ata_{r.data_agendada}.pdf", mime="application/pdf", type="secondary")
+                                        st.download_button("📥 Descarregar PDF da Ata", data=gerar_pdf_ata(r), file_name=f"Ata_{r.data_agendada}.pdf")
 
     with tab_votos:
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             with st.expander(":material/poll: Criar Nova Sondagem"):
                 with st.form("f_sond"):
-                    perg = st.text_input("Pergunta / Assunto a Votar *", key=f"s_p_{st.session_state.form_key}")
-                    opcoes_str = st.text_input("Opções de Resposta (separadas por vírgula) *", value="Favor, Contra, Abstenção", key=f"s_o_{st.session_state.form_key}")
-                    st.caption("Para votações de datas, escreva por exemplo: 10 de Maio, 15 de Maio, Nenhuma")
+                    perg = st.text_input("Pergunta / Assunto a Votar *")
+                    opcoes_str = st.text_input("Opções (separadas por vírgula) *", value="Favor, Contra, Abstenção")
                     if st.form_submit_button("Criar Votação"):
-                        if not perg.strip() or not opcoes_str.strip(): st.error("⚠️ A Pergunta e as Opções são obrigatórias!")
+                        if not perg.strip() or not opcoes_str.strip(): st.error("Campos obrigatórios.")
                         else:
                             session.add(Sondagem(pergunta=perg, opcoes=opcoes_str))
                             session.commit(); st.session_state.form_key += 1; st.rerun()
@@ -1738,33 +1693,30 @@ def pagina_assembleias():
                     status = "🟢 ATIVA" if s.ativa else "🔴 ENCERRADA"
                     st.caption(f"Status: {status} | Criada em: {s.data_criacao}")
                     
-                    lista_opcoes = [op.strip() for op in s.opcoes.split(',')] if s.opcoes else ["Favor", "Contra", "Abstenção"]
+                    lista_opcoes = [op.strip() for op in s.opcoes.split(",")] if s.opcoes else ["Favor", "Contra", "Abstenção"]
                     resultados = []
                     for op in lista_opcoes:
                         votos_op = session.query(VotoSondagem).filter_by(sondagem_id=s.id, resposta=op).count()
                         resultados.append(f"**{op}:** {votos_op}")
-                    
                     st.write(" | ".join(resultados))
-                    st.markdown("---")
                     
                     if s.ativa and st.session_state.perfil == "Morador":
                         ja_votou = session.query(VotoSondagem).filter_by(sondagem_id=s.id, condomino_id=st.session_state.condomino_id).first()
-                        if ja_votou: st.success(f"O seu voto ({ja_votou.resposta}) foi registado com sucesso.")
+                        if ja_votou: st.success(f"Voto registado: {ja_votou.resposta}")
                         else:
                             with st.form(f"form_voto_{s.id}"):
-                                st.write("**O seu voto:**")
-                                escolha = st.radio("Escolha uma opção:", lista_opcoes, label_visibility="collapsed", key=f"voto_{s.id}_{st.session_state.form_key}")
-                                if st.form_submit_button("Submeter Voto"):
+                                escolha = st.radio("Sua resposta:", lista_opcoes)
+                                if st.form_submit_button("Votar"):
                                     session.add(VotoSondagem(sondagem_id=s.id, condomino_id=st.session_state.condomino_id, resposta=escolha))
-                                    session.commit(); st.session_state.form_key += 1; st.rerun()
+                                    session.commit(); st.rerun()
 
                     if st.session_state.perfil == "Admin":
                         c_act1, c_act2 = st.columns(2)
-                        if c_act1.button("Alternar Estado (Abrir/Fechar)", key=f"alt_{s.id}"): s.ativa = not s.ativa; session.commit(); st.rerun()
-                        if c_act2.button("Apagar Sondagem", key=f"del_s_{s.id}"):
+                        if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): s.ativa = not s.ativa; session.commit(); st.rerun()
+                        if c_act2.button("Apagar Votação", key=f"del_s_{s.id}"):
                             session.query(VotoSondagem).filter_by(sondagem_id=s.id).delete()
                             session.delete(s); session.commit(); st.rerun()
-        else: st.info("Não existem votações em curso.")
+        else: st.info("Não existem votações de momento.")
 
 def pagina_mural():
     from datetime import datetime
@@ -1786,16 +1738,11 @@ def pagina_mural():
                             cond = session.get(Condomino, st.session_state.condomino_id)
                             if cond: fracao_str = f"Fr. {cond.fracao}"
                         
-                        session.add(Anuncio(
-                            titulo=titulo, mensagem=mensagem,
-                            data_criacao=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            criado_por=st.session_state.username, fracao=fracao_str
-                        ))
+                        session.add(Anuncio(titulo=titulo, mensagem=mensagem, data_criacao=datetime.now().strftime("%Y-%m-%d %H:%M"), criado_por=st.session_state.username, fracao=fracao_str))
                         session.commit(); st.session_state.toast = ("Anúncio publicado com sucesso!", "✅")
                         st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
     anuncios = session.query(Anuncio).order_by(Anuncio.id.desc()).all()
     if anuncios:
         for a in anuncios:
@@ -1810,14 +1757,14 @@ def pagina_mural():
                     if pode_apagar:
                         if c_del.button("🗑️ Apagar", key=f"del_an_{a.id}", use_container_width=True):
                             session.delete(a); session.commit(); st.rerun()
-    else: st.info("O mural está silencioso. Seja o primeiro a publicar alguma coisa!")
+    else: st.info("O mural está silencioso. Seja o primeiro a publicar algo!")
 
 def pagina_configuracoes():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/settings: Configurações e Segurança")
     
     if not st.session_state.modo_leitura:
-        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Backups"])
+        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Zona de Perigo"])
         
         with tab_geral:
             with st.container(border=True):
@@ -1859,13 +1806,13 @@ def pagina_configuracoes():
                 
                 df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
                 if not df_backup_cond.empty:
-                    csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode('utf-8-sig')
+                    csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode("utf-8-sig")
                     col_b1.download_button("📥 Descarregar Moradores (Excel)", data=csv_cond, file_name=f"Backup_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b1.info("Sem dados de moradores.")
                     
                 df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
                 if not df_backup_fin.empty:
-                    csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode('utf-8-sig')
+                    csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode("utf-8-sig")
                     col_b2.download_button("📥 Descarregar Contas (Excel)", data=csv_fin, file_name=f"Backup_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b2.info("Sem dados financeiros.")
             
@@ -1873,18 +1820,17 @@ def pagina_configuracoes():
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
                     st.subheader("🚨 Zona de Perigo (Reset de Dados)")
-                    st.warning("Atenção: Esta operação irá apagar permanentemente todos os moradores, recibos, despesas e configurações. A base de dados será recriada totalmente vazia.")
-                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero mesmo apagar a base de dados.")
+                    st.warning("Atenção: Esta operação apaga permanentemente todos os registos. A estrutura de colunas e permissões premium mantém-se.")
+                    confirmar_reset = st.checkbox("Eu compreendo os riscos e quero apagar a base de dados.")
                     
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
-                            with st.spinner("A limpar dados e a reiniciar os contadores (Método Suave)..."):
+                            with st.spinner("A limpar dados (Método Suave)..."):
                                 try:   
                                     import time
                                     from sqlalchemy import text
                                     
                                     session.rollback()
-                                    
                                     session.query(VotoSondagem).delete()
                                     session.query(Sondagem).delete()
                                     session.query(Anuncio).delete()
@@ -1897,32 +1843,23 @@ def pagina_configuracoes():
                                     session.query(Quota).delete()
                                     session.query(Utilizador).delete()
                                     session.query(Condomino).delete()
-                                    
                                     session.commit()
                                     
-                                    if engine.name == 'postgresql':
-                                        tabelas = [
-                                            'votos_sondagem', 'sondagens', 'anuncios', 'assembleias',
-                                            'ocorrencias', 'fornecedores', 'documentos', 'movimentos',
-                                            'orcamentos', 'quotas', 'utilizadores', 'condominos'
-                                        ]
+                                    if engine.name == "postgresql":
+                                        tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos"]
                                         for tabela in tabelas:
-                                            try:
-                                                session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
-                                            except Exception:
-                                                session.rollback()
+                                            try: session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
+                                            except Exception: session.rollback()
                                         session.commit()
                                     
-                                    st.success("✔️ Todos os dados foram limpos e as numerações repostas do zero!")
-                                    time.sleep(2)
-                                    
+                                    st.success("✔️ Limpeza concluída e IDs repostos a 1!")
+                                    time.sleep(1.5)
                                     st.session_state.logado = False
                                     st.session_state.username = None
                                     st.rerun()
-                                    
                                 except Exception as e:
                                     session.rollback()
-                                    st.error(f"Erro técnico ao tentar limpar os dados: {e}")
+                                    st.error(f"Erro ao tentar limpar: {e}")
 
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
@@ -1972,7 +1909,7 @@ else:
         if tes_pages: nav_morador["TESOURARIA PÚBLICA"] = tes_pages
             
         op_pages = []
-        if st.session_state.perm_mural: op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:")) # <--- CONDIÇÃO MURAL
+        if st.session_state.perm_mural: op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"))
         if st.session_state.perm_assembleias: op_pages.append(st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"))
         if st.session_state.perm_arquivo: op_pages.append(st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"))
         if st.session_state.perm_fornecedores: op_pages.append(st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"))
