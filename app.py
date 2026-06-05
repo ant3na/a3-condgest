@@ -960,19 +960,70 @@ def pagina_financas():
 
         if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander(":material/add_circle: Lançar Nova Despesa ou Receita", expanded=False):
-                with st.form("f_mov"):
-                    t = st.radio("Tipo de Lançamento", ["Despesa", "Receita"], horizontal=True, key=f"m_t_{st.session_state.form_key}")
-                    d = st.text_input("Descrição *", key=f"m_d_{st.session_state.form_key}")
-                    v = st.number_input("Valor (€) *", min_value=0.00, value=0.00, step=10.0, format="%.2f", key=f"m_v_{st.session_state.form_key}")
-                    dt = st.date_input("Data do Movimento", value=hoje, key=f"m_dt_{st.session_state.form_key}")
-                    if st.form_submit_button("Registar Lançamento"):
-                        if not d.strip(): st.error("⚠️ O preenchimento da Descrição é obrigatório!")
-                        elif v <= 0.0: st.error("⚠️ O valor do lançamento tem de ser superior a 0,00 €!")
-                        else:
-                            session.add(Movimento(tipo=t, descricao=d, valor=v, data=dt.strftime("%Y-%m-%d")))
-                            session.commit(); st.session_state.toast = ("Lançamento registado com sucesso!", "✅")
-                            st.session_state.form_key += 1; st.rerun()
+            
+            c_add_man, c_add_imp = st.columns(2)
+            
+            with c_add_man:
+                with st.expander(":material/add_circle: Lançar Nova Despesa ou Receita", expanded=False):
+                    with st.form("f_mov"):
+                        t = st.radio("Tipo de Lançamento", ["Despesa", "Receita"], horizontal=True, key=f"m_t_{st.session_state.form_key}")
+                        d = st.text_input("Descrição *", key=f"m_d_{st.session_state.form_key}")
+                        v = st.number_input("Valor (€) *", min_value=0.00, value=0.00, step=10.0, format="%.2f", key=f"m_v_{st.session_state.form_key}")
+                        dt = st.date_input("Data do Movimento", value=hoje, key=f"m_dt_{st.session_state.form_key}")
+                        if st.form_submit_button("Registar Lançamento"):
+                            if not d.strip(): st.error("⚠️ O preenchimento da Descrição é obrigatório!")
+                            elif v <= 0.0: st.error("⚠️ O valor do lançamento tem de ser superior a 0,00 €!")
+                            else:
+                                session.add(Movimento(tipo=t, descricao=d, valor=v, data=dt.strftime("%Y-%m-%d")))
+                                session.commit(); st.session_state.toast = ("Lançamento registado com sucesso!", "✅")
+                                st.session_state.form_key += 1; st.rerun()
+
+            with c_add_imp:
+                with st.expander(":material/upload_file: Importar via Excel/CSV", expanded=False):
+                    st.write("Faça upload de um ficheiro com as colunas exatas: `Tipo,Descrição,Valor,Data`. O Tipo deve ser **Despesa** ou **Receita**.")
+                    ficheiro_import_fin = st.file_uploader("Escolher ficheiro financeiro", type=["csv", "xlsx"], key=f"file_up_fin_{st.session_state.form_key}")
+                    if ficheiro_import_fin is not None:
+                        if st.button("Processar Importação", width="stretch", type="primary"):
+                            try:
+                                if ficheiro_import_fin.name.endswith('.csv'): 
+                                    try:
+                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding='utf-8', sep=None, engine='python')
+                                    except UnicodeDecodeError:
+                                        ficheiro_import_fin.seek(0)
+                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding='latin1', sep=None, engine='python')
+                                else: 
+                                    df_imp = pd.read_excel(ficheiro_import_fin)
+                                
+                                novos_movs = 0
+                                for _, row in df_imp.iterrows():
+                                    tipo = str(row.get('Tipo', '')).strip().capitalize()
+                                    descricao = str(row.get('Descrição', '')).strip()
+                                    
+                                    # Limpeza de valor caso venha formatado estranho no Excel
+                                    valor_raw = row.get('Valor', 0.0)
+                                    valor = pd.to_numeric(str(valor_raw).replace(',', '.'), errors='coerce')
+                                    
+                                    data_raw = row.get('Data', '')
+                                    data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != '' else hoje.strftime("%Y-%m-%d")
+
+                                    if tipo in ["Despesa", "Receita"] and descricao and pd.notna(valor) and float(valor) > 0:
+                                        novo_m = Movimento(
+                                            tipo=tipo,
+                                            descricao=descricao,
+                                            valor=float(valor),
+                                            data=data_mov
+                                        )
+                                        session.add(novo_m)
+                                        novos_movs += 1
+                                        
+                                if novos_movs > 0:
+                                    session.commit()
+                                    st.success(f"{novos_movs} movimentos importados com sucesso!")
+                                    st.session_state.form_key += 1
+                                else:
+                                    st.warning("Não foram importados registos (verifique se o Tipo é 'Despesa'/'Receita' e o Valor é > 0).")
+                            except Exception as e:
+                                st.error(f"Erro ao processar o ficheiro. Detalhe técnico: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         movs = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim)).all()
