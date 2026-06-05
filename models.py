@@ -22,24 +22,17 @@ class Utilizador(Base):
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     perfil = Column(String, nullable=False, default='Morador') # 'Admin' ou 'Morador'
-    
     condomino_id = Column(Integer, ForeignKey('condominos.id'), nullable=True) 
     condomino = relationship("Condomino", back_populates="utilizadores")
-    
-    # --- PERMISSÕES GRANULARES ---
     perm_dashboard = Column(Boolean, default=False)
     perm_condominos = Column(Boolean, default=False)
-    
     perm_quotas = Column(Boolean, default=False)
     perm_financas = Column(Boolean, default=False)
     perm_recibos = Column(Boolean, default=False)
-    
     perm_assembleias = Column(Boolean, default=False)
     perm_arquivo = Column(Boolean, default=False)
     perm_fornecedores = Column(Boolean, default=False)
     perm_ocorrencias = Column(Boolean, default=False)
-    
-    # Restrições de Ação
     modo_leitura = Column(Boolean, default=False) 
     perm_download_docs = Column(Boolean, default=True)
 
@@ -69,6 +62,8 @@ class Ocorrencia(Base):
     resolvida = Column(Boolean, default=False)
     data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d"))
     criado_por = Column(String, nullable=True)
+    foto1 = Column(String, nullable=True)
+    foto2 = Column(String, nullable=True)
 
 class Orcamento(Base):
     __tablename__ = 'orcamentos'
@@ -104,8 +99,6 @@ class Assembleia(Base):
     titulo = Column(String, nullable=False)
     assuntos = Column(String, nullable=False)
     realizada = Column(Boolean, default=False)
-    
-    # NOVOS CAMPOS PARA A ATA:
     texto_ata = Column(String, nullable=True) 
     ata_aprovada = Column(Boolean, default=False)
 
@@ -123,3 +116,12 @@ class VotoSondagem(Base):
     sondagem_id = Column(Integer, ForeignKey('sondagens.id'), nullable=False)
     condomino_id = Column(Integer, ForeignKey('condominos.id'), nullable=False)
     resposta = Column(String, nullable=False)
+
+class Anuncio(Base):
+    __tablename__ = 'anuncios'
+    id = Column(Integer, primary_key=True)
+    titulo = Column(String, nullable=False)
+    mensagem = Column(String, nullable=False)
+    data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d %H:%M"))
+    criado_por = Column(String, nullable=False)
+    fracao = Column(String, nullable=True)
