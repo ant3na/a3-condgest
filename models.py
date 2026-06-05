@@ -83,6 +83,7 @@ class Documento(Base):
     categoria = Column(String, nullable=False) 
     caminho = Column(String, nullable=False)
     data_upload = Column(String, default=date.today().strftime("%Y-%m-%d"))
+    carregado_por = Column(String, nullable=True)
 
 class Fornecedor(Base):
     __tablename__ = 'fornecedores'
