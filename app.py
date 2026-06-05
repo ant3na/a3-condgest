@@ -13,9 +13,9 @@ from datetime import date
 from sqlalchemy import func, and_
 from io import BytesIO
 
-# Importações limpas dos nossos módulos refatorados
-from models import Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem
-from db import init_db, get_session
+# Importações limpas dos nossos módulos refatorados (adicionado Base e engine)
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem
+from db import init_db, get_session, engine
 
 # ==========================================
 # VERIFICAÇÃO DE BIBLIOTECAS
@@ -1554,23 +1554,17 @@ def pagina_configuracoes():
                             with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
                                 try:   
                                     import time
-                                   # Em vez de destruir as tabelas (DROP), apagamos apenas os dados lá dentro
-                                    session.query(VotoSondagem).delete()
-                                    session.query(Sondagem).delete()
-                                    session.query(Assembleia).delete()
-                                    session.query(Ocorrencia).delete()
-                                    session.query(Fornecedor).delete()
-                                    session.query(Documento).delete()
-                                    session.query(Movimento).delete()
-                                    session.query(Orcamento).delete()
-                                    session.query(Quota).delete()
-                                    session.query(Utilizador).delete()
-                                    session.query(Condomino).delete()
                                     
-                                    # Confirmar a eliminação definitiva no Supabase
-                                    session.commit()
+                                    # 1. Fechar a sessão atual para evitar bloqueios de tabelas
+                                    session.close()
                                     
-                                    st.success("✔️ Todos os dados de teste foram limpos com sucesso! (A preparar sistema...)")
+                                    # 2. Destruir TODAS as tabelas e os respetivos contadores de ID
+                                    Base.metadata.drop_all(bind=engine)
+                                    
+                                    # 3. Recriar as tabelas do zero (IDs voltam todos a iniciar em 1)
+                                    Base.metadata.create_all(bind=engine)
+                                    
+                                    st.success("✔️ Todos os dados de teste foram limpos e as numerações repostas! (A preparar sistema...)")
                                     time.sleep(2)
                                     
                                     # Forçar logout para recriar o Admin limpo
@@ -1579,8 +1573,10 @@ def pagina_configuracoes():
                                     st.rerun()
                                     
                                 except Exception as e:
-                                    session.rollback()
+                                    # Se a sessão já estiver fechada, o rollback não é necessário, 
+                                    # mas deixamos o erro limpo
                                     st.error(f"Erro técnico ao tentar limpar os dados: {e}")
+
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
 # ==========================================
