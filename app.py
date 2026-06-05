@@ -1551,20 +1551,32 @@ def pagina_configuracoes():
                     
                     if confirmar_reset:
                         if st.button("🔥 EXECUTAR RESET AGORA", type="primary"):
-                            with st.spinner("A limpar e a recriar a base de dados na Cloud..."):
+                            with st.spinner("A limpar dados e a fazer reset às numerações..."):
                                 try:   
                                     import time
+                                    from sqlalchemy import text
                                     
-                                    # 1. Fechar a sessão atual para evitar bloqueios de tabelas
+                                    # 1. Aborta qualquer operação pendente e fecha a sessão atual
+                                    session.rollback()
                                     session.close()
                                     
-                                    # 2. Destruir TODAS as tabelas e os respetivos contadores de ID
-                                    Base.metadata.drop_all(bind=engine)
+                                    # 2. Mata todas as ligações adormecidas no Pool (Liberta os Locks)
+                                    engine.dispose()
                                     
-                                    # 3. Recriar as tabelas do zero (IDs voltam todos a iniciar em 1)
-                                    Base.metadata.create_all(bind=engine)
+                                    # 3. Escolhe a estratégia consoante a Base de Dados
+                                    if engine.name == 'postgresql':
+                                        # Abordagem Supabase (Esvazia tudo em cascata e faz reset aos IDs)
+                                        with engine.begin() as conn:
+                                            # Recolhe o nome de todas as tabelas dinamicamente
+                                            table_names = ", ".join([table.name for table in Base.metadata.sorted_tables])
+                                            # Executa o truncate brutal
+                                            conn.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE;"))
+                                    else:
+                                        # Abordagem Local SQLite (Drop All / Create All)
+                                        Base.metadata.drop_all(bind=engine)
+                                        Base.metadata.create_all(bind=engine)
                                     
-                                    st.success("✔️ Todos os dados de teste foram limpos e as numerações repostas! (A preparar sistema...)")
+                                    st.success("✔️ Todos os dados foram limpos e as numerações repostas! (A preparar sistema...)")
                                     time.sleep(2)
                                     
                                     # Forçar logout para recriar o Admin limpo
@@ -1573,8 +1585,6 @@ def pagina_configuracoes():
                                     st.rerun()
                                     
                                 except Exception as e:
-                                    # Se a sessão já estiver fechada, o rollback não é necessário, 
-                                    # mas deixamos o erro limpo
                                     st.error(f"Erro técnico ao tentar limpar os dados: {e}")
 
 # ==========================================
