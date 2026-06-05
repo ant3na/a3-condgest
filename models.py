@@ -35,6 +35,7 @@ class Utilizador(Base):
     perm_ocorrencias = Column(Boolean, default=False)
     modo_leitura = Column(Boolean, default=False) 
     perm_download_docs = Column(Boolean, default=True)
+    perm_mural = Column(Boolean, default=True)
 
 class Quota(Base):
     __tablename__ = 'quotas'
