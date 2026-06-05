@@ -1544,7 +1544,7 @@ def pagina_configuracoes():
             if st.session_state.perfil == "Admin":
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
-                    st.subheader("🚨 Zona de Perigo")
+                    st.subheader("🚨 Zona de Perigo 🚨")
                     st.warning("Atenção: Esta operação irá eliminar permanentemente todos os dados. A Base de Dados será recriada totalmente vazia.")
                     
                     confirmar_reset = st.checkbox("Eu compreendo os riscos e quero avançar para o reset da Base de Dados.")
