@@ -684,7 +684,7 @@ def pagina_dashboard():
     # --- NOVO TÍTULO CENTRADO CORRIGIDO ---
     st.markdown(f"""
     <div style="text-align: center;">
-        <h1 style="margin-bottom: 0;">📊 Dashboard</h1>
+        <h1 style="margin-bottom: 0;">📊 Dashboard 📊</h1>
         <p style="font-size: 18px; color: #64748b; margin-top: 5px;">Período de Análise: {mes_sel} {ano_sel}</p>
     </div>
     <br>
