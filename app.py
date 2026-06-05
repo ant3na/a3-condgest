@@ -685,23 +685,26 @@ def pagina_dashboard():
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
-    # --- OTIMIZAÇÃO 1: KPIs com valores financeiros reais ---
+    # --- KPIs Otimizados com Valores Financeiros Reais ---
     col1, col2, col3, col4 = st.columns(4)
     total_cond = session.query(Condomino).count()
     saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo='Receita').scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo='Despesa').scalar() or 0.0)
 
-    # Cálculo da dívida em euros
+    # Cálculo exato da dívida em euros e volume de quotas
     valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
     dividas_ativas = session.query(Quota).filter_by(paga=False).count()
     ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
 
+    # CORREÇÃO: Verde ("normal") se não houver dívidas, Vermelho ("inverse") se houver devedores
+    cor_delta_divida = "normal" if dividas_ativas == 0 else "inverse"
+
     col1.metric("Frações Registadas", total_cond)
     col2.metric("Saldo de Caixa", f"{saldo_total:.2f} €")
-    col3.metric("Valor em Dívida", f"{valor_divida:.2f} €", f"{dividas_ativas} quotas atrasadas", delta_color="inverse")
+    col3.metric("Valor em Dívida", f"{valor_divida:.2f} €", f"{dividas_ativas} quotas atrasadas", delta_color=cor_delta_divida)
     col4.metric("Ocorrências Abertas", ocs_pendentes)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- OTIMIZAÇÃO 2: Novo separador para Análise de Devedores ---
+    # --- Definição dos Separadores do Painel ---
     tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
     meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
 
@@ -717,7 +720,7 @@ def pagina_dashboard():
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig1, width="stretch", config={'displayModeBar': False})
                     
-                    # --- OTIMIZAÇÃO 3: Taxa de cobrança anual ---
+                    # Barra de progresso da Taxa de Cobrança Anual
                     total_gerado = sum(q.valor for q in quotas_ano)
                     total_pago = sum(q.valor for q in quotas_ano if q.paga)
                     if total_gerado > 0:
@@ -747,7 +750,7 @@ def pagina_dashboard():
                 df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração": f"Fr. {q.condomino.fracao}", "Valor Pago": q.valor} for q in quotas_pagas_ano])
                 df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
                 df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
-                # Utilização de barmode='stack' para ser mais legível no total mensal
+                
                 fig3 = px.bar(df_fracoes_grouped, x='Mês_Nome', y='Valor Pago', color='Fração', barmode='stack', text_auto='.0f')
                 fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig3, width="stretch", config={'displayModeBar': False})
@@ -755,10 +758,10 @@ def pagina_dashboard():
 
     with tab_devedores:
         with st.container(border=True):
-            st.subheader("⚠️ Top Devedores do Condomínio")
+            st.subheader("⚠️ Dívidas do Condomínio")
             todas_dividas = session.query(Quota).filter_by(paga=False).all()
             if todas_dividas:
-                # Agrupar dívidas por fração para identificar os maiores devedores
+                # Agrupamento inteligente para identificar os incumprimentos por fração
                 df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
                 df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
                 
