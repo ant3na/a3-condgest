@@ -679,7 +679,8 @@ def pagina_acessos():
         else: st.info("Sem moradores com acesso.")
 
 def pagina_dashboard():
-    import plotly.graph_objects as go # Importação adicionada para o Velocímetro
+    import plotly.graph_objects as go # Importação para o Velocímetro
+    from datetime import datetime     # Importação para cálculo dinâmico de dias da agenda
     
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
@@ -719,7 +720,7 @@ def pagina_dashboard():
     meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
 
     with tab_geral:
-        # ALTERAÇÃO: Passamos a ter 3 colunas para acomodar o velocímetro
+        # --- LINHA 1: Saúde Financeira Global ---
         c1, c2, c3 = st.columns(3)
         
         with c1:
@@ -758,7 +759,8 @@ def pagina_dashboard():
             with st.container(border=True):
                 st.subheader(f"Orçamento [{ano_sel}]")
                 orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
-                despesas_ano = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == 'Despesa', Movimento.data.startswith(str(ano_sel)))).scalar() or 0.0
+                despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == 'Despesa', Movimento.data.startswith(str(ano_sel)))).all()
+                despesas_ano = sum(d.valor for d in despesas_ano_lista)
                 
                 if orc and orc.valor_anual > 0:
                     fig_gauge = go.Figure(go.Indicator(
@@ -790,7 +792,6 @@ def pagina_dashboard():
                     )
                     st.plotly_chart(fig_gauge, use_container_width=True, config={'displayModeBar': False})
                     
-                    # Indicação extra para ficar bem claro
                     percentagem = (despesas_ano / orc.valor_anual) * 100
                     if percentagem > 100:
                         st.error(f"⚠️ Orçamento excedido em {percentagem - 100:.1f}%")
@@ -798,6 +799,72 @@ def pagina_dashboard():
                         st.warning("⚠️ Orçamento quase no limite!")
                 else: 
                     st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para definir o valor aprovado para este ano.")
+
+        # --- LINHA 2: Gestão Operacional e Comunitária (PONTOS 1, 2 e 4) ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        r2_c1, r2_c2, r2_c3 = st.columns(3)
+        
+        with r2_c1:
+            with st.container(border=True):
+                st.subheader("🍩 Categoria de Despesas")
+                if despesas_ano_lista:
+                    # PONTO 1: Gráfico de Donut agrupando custos lançados
+                    df_desp = pd.DataFrame([{"Categoria": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
+                    df_desp_grouped = df_desp.groupby("Categoria").sum().reset_index()
+                    
+                    fig_donut = px.pie(df_desp_grouped, values='Valor', names='Categoria', hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
+                    fig_donut.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", 
+                        plot_bgcolor="rgba(0,0,0,0)", 
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
+                    )
+                    st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+                else:
+                    st.info("Não existem despesas lançadas este ano para categorizar.")
+                    
+        with r2_c2:
+            with st.container(border=True):
+                st.subheader("📋 Ocorrências Pendentes")
+                # PONTO 2: Lista rápida das últimas 5 avarias/problemas em aberto
+                ocs_lista = session.query(Ocorrencia).filter_by(resolvida=False).order_by(Ocorrencia.id.desc()).limit(5).all()
+                if ocs_lista:
+                    df_ocs_dash = pd.DataFrame([{"Data": o.data_criacao, "Assunto": o.titulo} for o in ocs_lista])
+                    st.dataframe(df_ocs_dash, hide_index=True, use_container_width=True)
+                    st.caption("Aceda ao menu 'Ocorrências' para gerir ou resolver estes pedidos.")
+                else:
+                    st.success("🎉 Excelente! Todas as ocorrências do prédio estão resolvidas.")
+                    
+        with r2_c3:
+            with st.container(border=True):
+                st.subheader("📅 Agenda & Comunidade")
+                # PONTO 4: Alertas automáticos baseados no calendário e sondagens do sistema
+                ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
+                sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
+                
+                alertas_encontrados = False
+                
+                if ass_futuras:
+                    alertas_encontrados = True
+                    for a in ass_futuras:
+                        try:
+                            d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
+                            dias_restantes = (d_ass - hoje).days
+                            if dias_restantes == 0:
+                                st.warning(f"🚨 **Assembleia HOJE:** '{a.titulo}'")
+                            elif dias_restantes > 0:
+                                st.info(f"⏳ Faltam **{dias_restantes} dias** para: '{a.titulo}' ({d_ass.strftime('%d/%m/%Y')})")
+                            else:
+                                st.error(f"⚠️ Reunião atrasada por realizar: '{a.titulo}'")
+                        except Exception:
+                            st.info(f"📅 Reunião Agendada: '{a.titulo}' ({a.data_agendada})")
+                
+                if sond_ativas > 0:
+                    alertas_encontrados = True
+                    st.success(f"🗳️ Existem **{sond_ativas} votações ativas** a decorrer no portal dos moradores.")
+                    
+                if not alertas_encontrados:
+                    st.info("Sem reuniões agendadas ou votações em curso de momento.")
 
     with tab_fracoes:
         with st.container(border=True):
@@ -818,7 +885,6 @@ def pagina_dashboard():
             st.subheader("⚠️ Dívidas ao Condomínio")
             todas_dividas = session.query(Quota).filter_by(paga=False).all()
             if todas_dividas:
-                # Agrupamento inteligente para identificar os incumprimentos por fração
                 df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
                 df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
                 
