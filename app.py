@@ -9,12 +9,12 @@ import unicodedata
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_
 from io import BytesIO
 
-# Importações limpas e completas dos nossos módulos refatorados (INCLUINDO LOGAUDITORIA)
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, LogAuditoria
+# Importações limpas e completas dos nossos módulos refatorados (INCLUINDO EQUIPAMENTO)
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, LogAuditoria, Equipamento
 from db import init_db, get_session, engine
 
 # ==========================================
@@ -45,7 +45,6 @@ caminho_logo = "logo.png"
 # SISTEMA DE AUDITORIA (LOGS)
 # ==========================================
 def registar_log(acao, detalhe):
-    """Regista uma ação na base de dados para efeitos de auditoria."""
     if st.session_state.get("username"):
         try:
             agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -428,7 +427,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# BARRA LATERAL COM NOTIFICAÇÕES (PONTO 3)
+# BARRA LATERAL COM NOTIFICAÇÕES (PONTOS 2 E 3)
 # ==========================================
 hoje = date.today()
 meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -455,6 +454,20 @@ def configurar_sidebar():
             ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
             if ocs_pendentes > 0:
                 st.sidebar.warning(f"🔧 **{ocs_pendentes}** ocorrências abertas.")
+                alertas += 1
+                
+            # NOVO CHECK: MANUTENÇÃO PREVENTIVA
+            eqs = session.query(Equipamento).all()
+            eqs_expirar = 0
+            for eq in eqs:
+                if eq.data_proxima_inspecao:
+                    try:
+                        d_prox = datetime.strptime(eq.data_proxima_inspecao, "%Y-%m-%d").date()
+                        if (d_prox - hoje).days <= 30:
+                            eqs_expirar += 1
+                    except: pass
+            if eqs_expirar > 0:
+                st.sidebar.error(f"🧯 **{eqs_expirar}** inspeções a expirar brevemente!")
                 alertas += 1
             
             dividas_ativas = session.query(Quota).filter_by(paga=False).count()
@@ -570,7 +583,6 @@ def pagina_login():
 
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    
     if not st.session_state.condomino_id:
         st.error("O seu utilizador não está associado a nenhuma fração.")
         return
@@ -619,7 +631,6 @@ def pagina_dashboard_morador():
 def pagina_acessos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/admin_panel_settings: Gestão de Acessos e Permissões")
-    
     tab_users, tab_perms = st.tabs([":material/person_add: Criar Utilizadores", ":material/shield: Configurar Permissões"])
     
     with tab_users:
@@ -640,36 +651,18 @@ def pagina_acessos():
                         if st.button(":material/rocket_launch: Criar Utilizador", width="stretch"):
                             username_sugerido = formatar_username(cond_sel.nome)
                             sucesso, msg_toast = False, ""
-                            
-                            novo_user = Utilizador(
-                                username=username_sugerido, password_hash=generate_password_hash("mudar123"), 
-                                perfil="Morador", condomino_id=id_cond,
-                                perm_dashboard=True, perm_condominos=False, 
-                                perm_quotas=True, perm_financas=False, perm_recibos=True,
-                                perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
-                                perm_mural=True,
-                                modo_leitura=False, perm_download_docs=True
-                            )
+                            novo_user = Utilizador(username=username_sugerido, password_hash=generate_password_hash("mudar123"), perfil="Morador", condomino_id=id_cond, perm_dashboard=True, perm_condominos=False, perm_quotas=True, perm_financas=False, perm_recibos=True, perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True, perm_mural=True, modo_leitura=False, perm_download_docs=True)
                             try:
                                 session.add(novo_user); session.commit()
                                 sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user.username} | Pass: mudar123"
                             except Exception:
                                 session.rollback()
-                                novo_user_alt = Utilizador(
-                                    username=f"{username_sugerido}_{cond_sel.fracao.replace(' ', '').lower()}", 
-                                    password_hash=generate_password_hash("mudar123"), perfil="Morador", condomino_id=id_cond,
-                                    perm_dashboard=True, perm_condominos=False, 
-                                    perm_quotas=True, perm_financas=False, perm_recibos=True,
-                                    perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True,
-                                    perm_mural=True,
-                                    modo_leitura=False, perm_download_docs=True
-                                )
+                                novo_user_alt = Utilizador(username=f"{username_sugerido}_{cond_sel.fracao.replace(' ', '').lower()}", password_hash=generate_password_hash("mudar123"), perfil="Morador", condomino_id=id_cond, perm_dashboard=True, perm_condominos=False, perm_quotas=True, perm_financas=False, perm_recibos=True, perm_assembleias=True, perm_arquivo=True, perm_fornecedores=False, perm_ocorrencias=True, perm_mural=True, modo_leitura=False, perm_download_docs=True)
                                 try:
                                     session.add(novo_user_alt); session.commit()
                                     sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user_alt.username} | Pass: mudar123"
                                 except Exception as e2: 
-                                    session.rollback()
-                                    st.error(f"Erro técnico na base de dados: {str(e2)}")
+                                    session.rollback(); st.error(f"Erro: {str(e2)}")
                             if sucesso:
                                 registar_log("Acessos", f"Criou utilizador para a {cond_sel.fracao}")
                                 st.session_state.toast = (msg_toast, "✅"); st.rerun()
@@ -699,12 +692,10 @@ def pagina_acessos():
                     u_sel = session.get(Utilizador, int(df_perms.iloc[ev_perms.selection.rows[0]]["ID_User"]))
                     with st.form("form_perms"):
                         st.subheader(f":material/shield: Permissões Específicas de: {u_sel.username}")
-                        
                         st.write("---")
                         st.write("**Restrições Globais de Ação:**")
                         val_leitura = st.checkbox(":material/visibility: Modo Leitura Global (Apenas visualiza dados)", value=u_sel.modo_leitura, key=f"p_l_{st.session_state.form_key}")
                         val_down = st.checkbox(":material/download: Permitir Descarregar Documentos PDF", value=u_sel.perm_download_docs, key=f"p_d_{st.session_state.form_key}")
-                        
                         st.write("---")
                         col1, col2, col3 = st.columns(3)
                         with col1:
@@ -741,27 +732,22 @@ def pagina_acessos():
 def pagina_dashboard():
     import plotly.graph_objects as go
     from datetime import datetime
-    
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    
     st.title(":material/dashboard: Dashboard")
     st.markdown(f"""
     <div style="margin-top: -15px; margin-bottom: 20px;">
         <p style="font-size: 18px; color: #64748b; font-weight: 500;">Período referente a {mes_sel} {ano_sel}</p>
     </div>
     """, unsafe_allow_html=True)
-    
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
     col1, col2, col3, col4 = st.columns(4)
     total_cond = session.query(Condomino).count()
     saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo="Receita").scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo="Despesa").scalar() or 0.0)
-
     valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
     dividas_ativas = session.query(Quota).filter_by(paga=False).count()
     ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
-
     cor_delta_divida = "normal" if dividas_ativas == 0 else "inverse"
 
     col1.metric("Frações Registadas", total_cond)
@@ -775,7 +761,6 @@ def pagina_dashboard():
 
     with tab_geral:
         c1, c2, c3 = st.columns(3)
-        
         with c1:
             with st.container(border=True):
                 st.subheader(f"Estado das Quotas [{ano_sel}]")
@@ -785,7 +770,6 @@ def pagina_dashboard():
                     fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values="Valor", names="Estado", hole=0.4, color="Estado", color_discrete_map={"Pagas":"#2563eb", "Em Dívida":"#ef4444"})
                     fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
-                    
                     total_gerado = sum(q.valor for q in quotas_ano)
                     total_pago = sum(q.valor for q in quotas_ano if q.paga)
                     if total_gerado > 0:
@@ -793,7 +777,6 @@ def pagina_dashboard():
                         st.write(f"**Taxa de Cobrança Anual:** {taxa:.1f}%")
                         st.progress(min(taxa / 100, 1.0))
                 else: st.info("Sem quotas geradas neste ano.")
-
         with c2:
             with st.container(border=True):
                 st.subheader(f"Receitas / Despesas [{ano_sel}]")
@@ -806,73 +789,36 @@ def pagina_dashboard():
                     fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
                 else: st.info("Sem dados financeiros registados.")
-                
         with c3:
             with st.container(border=True):
                 st.subheader(f"Orçamento [{ano_sel}]")
                 orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
                 despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == "Despesa", Movimento.data.startswith(str(ano_sel)))).all()
                 despesas_ano = sum(d.valor for d in despesas_ano_lista)
-                
                 if orc and orc.valor_anual > 0:
                     fig_gauge = go.Figure(go.Indicator(
-                        mode="gauge+number",
-                        value=despesas_ano,
-                        number={"valueformat": ".2f", "suffix": " €"},
-                        domain={"x": [0, 1], "y": [0, 1]},
-                        gauge={
-                            "axis": {"range": [None, orc.valor_anual], "tickwidth": 1},
-                            "bar": {"color": "#1e293b"},
-                            "bgcolor": "white",
-                            "steps": [
-                                {"range": [0, orc.valor_anual * 0.7], "color": "#bbf7d0"},
-                                {"range": [orc.valor_anual * 0.7, orc.valor_anual * 0.9], "color": "#fef08a"},
-                                {"range": [orc.valor_anual * 0.9, orc.valor_anual * 1.5], "color": "#fecaca"}
-                            ],
-                            "threshold": {
-                                "line": {"color": "red", "width": 3},
-                                "thickness": 0.75,
-                                "value": orc.valor_anual
-                            }
-                        }
+                        mode="gauge+number", value=despesas_ano, number={"valueformat": ".2f", "suffix": " €"}, domain={"x": [0, 1], "y": [0, 1]},
+                        gauge={"axis": {"range": [None, orc.valor_anual], "tickwidth": 1}, "bar": {"color": "#1e293b"}, "bgcolor": "white", "steps": [{"range": [0, orc.valor_anual * 0.7], "color": "#bbf7d0"}, {"range": [orc.valor_anual * 0.7, orc.valor_anual * 0.9], "color": "#fef08a"}, {"range": [orc.valor_anual * 0.9, orc.valor_anual * 1.5], "color": "#fecaca"}], "threshold": {"line": {"color": "red", "width": 3}, "thickness": 0.75, "value": orc.valor_anual}}
                     ))
-                    fig_gauge.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", 
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(t=30, b=10, l=20, r=20),
-                        height=250
-                    )
+                    fig_gauge.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(t=30, b=10, l=20, r=20), height=250)
                     st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
-                    
                     percentagem = (despesas_ano / orc.valor_anual) * 100
-                    if percentagem > 100:
-                        st.error(f"⚠️ Orçamento excedido em {percentagem - 100:.1f}%")
-                    elif percentagem > 90:
-                        st.warning("⚠️ Orçamento quase no limite!")
-                else: 
-                    st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para definir o valor aprovado para este ano.")
+                    if percentagem > 100: st.error(f"⚠️ Orçamento excedido em {percentagem - 100:.1f}%")
+                    elif percentagem > 90: st.warning("⚠️ Orçamento quase no limite!")
+                else: st.info("⚠️ Orçamento não definido. Vá a 'Finanças'.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         r2_c1, r2_c2, r2_c3 = st.columns(3)
-        
         with r2_c1:
             with st.container(border=True):
                 st.subheader("🍩 Categoria de Despesas")
                 if despesas_ano_lista:
                     df_desp = pd.DataFrame([{"Categoria": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
                     df_desp_grouped = df_desp.groupby("Categoria").sum().reset_index()
-                    
                     fig_donut = px.pie(df_desp_grouped, values="Valor", names="Categoria", hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
-                    fig_donut.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", 
-                        plot_bgcolor="rgba(0,0,0,0)", 
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
-                    )
+                    fig_donut.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5))
                     st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
-                else:
-                    st.info("Não existem despesas lançadas este ano para categorizar.")
-                    
+                else: st.info("Não existem despesas lançadas.")
         with r2_c2:
             with st.container(border=True):
                 st.subheader("📋 Ocorrências Pendentes")
@@ -880,39 +826,27 @@ def pagina_dashboard():
                 if ocs_lista:
                     df_ocs_dash = pd.DataFrame([{"Data": o.data_criacao, "Assunto": o.titulo} for o in ocs_lista])
                     st.dataframe(df_ocs_dash, hide_index=True, use_container_width=True)
-                    st.caption("Aceda ao menu 'Ocorrências' para gerir ou resolver estes pedidos.")
-                else:
-                    st.success("🎉 Excelente! Todas as ocorrências do prédio estão resolvidas.")
-                    
+                else: st.success("🎉 Todas as ocorrências resolvidas.")
         with r2_c3:
             with st.container(border=True):
                 st.subheader("📅 Agenda & Comunidade")
                 ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
                 sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
-                
                 alertas_encontrados = False
-                
                 if ass_futuras:
                     alertas_encontrados = True
                     for a in ass_futuras:
                         try:
                             d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
                             dias_restantes = (d_ass - hoje).days
-                            if dias_restantes == 0:
-                                st.warning(f"🚨 **Assembleia HOJE:** '{a.titulo}'")
-                            elif dias_restantes > 0:
-                                st.info(f"⏳ Faltam **{dias_restantes} dias** para: '{a.titulo}' ({d_ass.strftime('%d/%m/%Y')})")
-                            else:
-                                st.error(f"⚠️ Reunião atrasada por realizar: '{a.titulo}'")
-                        except Exception:
-                            st.info(f"📅 Reunião Agendada: '{a.titulo}' ({a.data_agendada})")
-                
+                            if dias_restantes == 0: st.warning(f"🚨 **HOJE:** '{a.titulo}'")
+                            elif dias_restantes > 0: st.info(f"⏳ **{dias_restantes} dias** p/: '{a.titulo}'")
+                            else: st.error(f"⚠️ Atrasada: '{a.titulo}'")
+                        except Exception: st.info(f"📅 Agendada: '{a.titulo}'")
                 if sond_ativas > 0:
                     alertas_encontrados = True
-                    st.success(f"🗳️ Existem **{sond_ativas} votações ativas** a decorrer no portal dos moradores.")
-                    
-                if not alertas_encontrados:
-                    st.info("Sem reuniões agendadas ou votações em curso de momento.")
+                    st.success(f"🗳️ **{sond_ativas} votações ativas**.")
+                if not alertas_encontrados: st.info("Sem reuniões agendadas ou votações.")
 
     with tab_fracoes:
         with st.container(border=True):
@@ -922,7 +856,6 @@ def pagina_dashboard():
                 df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração": f"Fr. {q.condomino.fracao}", "Valor Pago": q.valor} for q in quotas_pagas_ano])
                 df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
                 df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
-                
                 fig3 = px.bar(df_fracoes_grouped, x="Mês_Nome", y="Valor Pago", color="Fração", barmode="stack", text_auto=".0f")
                 fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
@@ -935,7 +868,6 @@ def pagina_dashboard():
             if todas_dividas:
                 df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
                 df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
-                
                 c_graf, c_tab = st.columns([1.5, 1])
                 with c_graf:
                     fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation="h", text_auto=".2f", color="Valor Total", color_continuous_scale="Reds")
@@ -943,13 +875,11 @@ def pagina_dashboard():
                     st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
                 with c_tab:
                     st.dataframe(df_top, hide_index=True, column_config={"Quotas em Atraso": st.column_config.NumberColumn("Nº Quotas", format="%d"), "Valor Total": st.column_config.NumberColumn("Em Dívida (€)", format="%.2f €")}, use_container_width=True)
-            else:
-                st.success("🎉 Excelente! Não existem condóminos com dívidas ativas.")
+            else: st.success("🎉 Excelente! Não existem condóminos com dívidas ativas.")
 
 def pagina_condominos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/group: Gestão de Condóminos")
-    
     if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
         with st.expander(":material/upload_file: Importar Moradores via Excel/CSV"):
             st.write("Faça upload de um ficheiro CSV ou Excel contendo as seguintes colunas (exatamente com estes nomes): `Nome,Fração,NIF,Telefone,Email,Permilagem`.")
@@ -958,14 +888,11 @@ def pagina_condominos():
                 if st.button("Processar Importação", width="stretch"):
                     try:
                         if ficheiro_import.name.endswith(".csv"): 
-                            try:
-                                df_imp = pd.read_csv(ficheiro_import, encoding="utf-8", sep=None, engine="python")
+                            try: df_imp = pd.read_csv(ficheiro_import, encoding="utf-8", sep=None, engine="python")
                             except UnicodeDecodeError:
                                 ficheiro_import.seek(0)
                                 df_imp = pd.read_csv(ficheiro_import, encoding="latin1", sep=None, engine="python")
-                        else: 
-                            df_imp = pd.read_excel(ficheiro_import)
-                        
+                        else: df_imp = pd.read_excel(ficheiro_import)
                         novos = 0
                         for _, row in df_imp.iterrows():
                             fracao = str(row.get("Fração", "")).strip()
@@ -973,30 +900,22 @@ def pagina_condominos():
                                 existe = session.query(Condomino).filter_by(fracao=fracao).first()
                                 if not existe:
                                     novo_c = Condomino(
-                                        nome=str(row.get("Nome", "Sem Nome")).strip(),
-                                        fracao=fracao,
-                                        nif=str(row.get("NIF", "")).replace(".0","").replace("nan",""),
-                                        telefone=str(row.get("Telefone", "")).replace(".0","").replace("nan",""),
-                                        email=str(row.get("Email", "")).strip().replace("nan",""),
+                                        nome=str(row.get("Nome", "Sem Nome")).strip(), fracao=fracao, nif=str(row.get("NIF", "")).replace(".0","").replace("nan",""),
+                                        telefone=str(row.get("Telefone", "")).replace(".0","").replace("nan",""), email=str(row.get("Email", "")).strip().replace("nan",""),
                                         permilagem=float(row.get("Permilagem", 0.0)) if pd.notna(row.get("Permilagem")) else 0.0
                                     )
-                                    session.add(novo_c)
-                                    novos += 1
+                                    session.add(novo_c); novos += 1
                         if novos > 0:
                             session.commit()
                             registar_log("Condóminos", f"Importou {novos} frações por ficheiro")
                             st.success(f"{novos} frações importadas com sucesso!")
                             st.session_state.form_key += 1
-                        else:
-                            st.warning("Não foram importadas frações (já existem ou ficheiro sem dados válidos).")
-                    except Exception as e:
-                        st.error(f"Erro ao processar o ficheiro. Detalhe técnico: {e}")
-    
+                        else: st.warning("Não foram importadas frações (já existem ou ficheiro sem dados válidos).")
+                    except Exception as e: st.error(f"Erro ao processar o ficheiro. Detalhe técnico: {e}")
     conds = session.query(Condomino).all()
     total_permilagem = session.query(func.sum(Condomino.permilagem)).scalar() or 0.0
     col_kpi1, col_kpi2 = st.columns([3, 1])
     col_kpi1.info(f"Permilagem Total Registada: **{total_permilagem:.2f} / 1000**")
-    
     if not st.session_state.modo_leitura:
         title_form = ":material/edit: Editar Condómino" if st.session_state.edit_type == "cond" else ":material/person_add: Registo Manual"
         with st.expander(title_form, expanded=(st.session_state.edit_type == "cond")):
@@ -1005,7 +924,6 @@ def pagina_condominos():
                 if st.session_state.edit_type == "cond":
                     obj = session.get(Condomino, st.session_state.edit_id)
                     val_n, val_f, val_nif, val_t, val_e, val_p = obj.nome, obj.fracao, obj.nif, obj.telefone, obj.email, obj.permilagem
-
                 c_form1, c_form2 = st.columns(2)
                 with c_form1:
                     n = st.text_input("Nome do Proprietário", value=val_n, key=f"c_n_{st.session_state.form_key}")
@@ -1015,7 +933,6 @@ def pagina_condominos():
                     nif_input = st.text_input("NIF", value=val_nif, key=f"c_nif_{st.session_state.form_key}")
                     t = st.text_input("Telefone", value=val_t, key=f"c_t_{st.session_state.form_key}")
                     e = st.text_input("Email", value=val_e, key=f"c_e_{st.session_state.form_key}")
-                
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("Guardar"):
                     if st.session_state.edit_type == "cond":
@@ -1028,12 +945,10 @@ def pagina_condominos():
                         registar_log("Condóminos", f"Criou a fração {f}")
                     session.commit(); clear_edit(); st.rerun()
                 if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
-
     if conds:
         with st.container(border=True):
             df_export = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Permilagem": c.permilagem, "Telefone": c.telefone, "Email": c.email} for c in conds])
             evento = st.dataframe(df_export, width="stretch", hide_index=True, column_config={"ID": None, "Permilagem": st.column_config.NumberColumn("Permilagem (‰)", format="%.2f ‰")}, on_select="rerun", selection_mode="single-row")
-        
         if evento.selection.rows:
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
@@ -1054,14 +969,12 @@ def pagina_condominos():
 
 def pagina_quotas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    
     st.title(":material/payments: Gestão de Quotas")
     st.markdown(f"""
     <div style="margin-top: -15px; margin-bottom: 20px;">
         <p style="font-size: 18px; color: #64748b; font-weight: 500;">Período referente a {mes_sel} {ano_sel}</p>
     </div>
     """, unsafe_allow_html=True)
-    
     valor_quota_padrao = config.get("VALOR_MENSAL_FIXO", 50.00)
     
     if st.session_state.perfil == "Admin":
@@ -1074,7 +987,7 @@ def pagina_quotas():
         pagas_query = session.query(Quota).filter(and_(Quota.paga == True, Quota.mes_ano == mes_str, Quota.condomino_id == st.session_state.condomino_id))
 
     if not condominos:
-        st.warning("⚠️ **Nenhum condómino registado:** Não existem frações ou moradores registados no sistema. Por favor, vá ao separador **Condóminos** para registar manualmente ou importar o seu ficheiro Excel/CSV antes de poder processar ou gerar quotas.")
+        st.warning("⚠️ **Nenhum condómino registado:** Não existem frações ou moradores registados no sistema.")
         return
 
     condominos_sem_quota = [c for c in condominos if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=mes_str).first()]
@@ -1126,8 +1039,7 @@ def pagina_quotas():
                     for d in dividas:
                         if d.condomino.email:
                             corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},\n\nVerificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
-                            if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email):
-                                emails_enviados += 1
+                            if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email): emails_enviados += 1
                     if emails_enviados > 0: 
                         registar_log("Quotas", f"Disparou {emails_enviados} avisos de dívida em lote")
                         st.success(f"{emails_enviados} avisos enviados com sucesso!")
@@ -1172,7 +1084,6 @@ def pagina_quotas():
 def pagina_financas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/account_balance: Finanças e Fluxo de Caixa")
-    
     tab_mes, tab_ano = st.tabs([f"📅 Extrato Mensal ({mes_sel})", f"📈 Relatório Anual (Fecho de Contas {ano_sel})"])
 
     with tab_mes:
@@ -1199,7 +1110,6 @@ def pagina_financas():
         if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
             st.markdown("<br>", unsafe_allow_html=True)
             c_add_man, c_add_imp = st.columns(2)
-            
             with c_add_man:
                 with st.expander(":material/add_circle: Lançar Nova Despesa ou Receita", expanded=False):
                     with st.form("f_mov"):
@@ -1225,14 +1135,11 @@ def pagina_financas():
                         if st.button("Processar Importação", width="stretch", type="primary"):
                             try:
                                 if ficheiro_import_fin.name.endswith(".csv"): 
-                                    try:
-                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding="utf-8", sep=None, engine="python")
+                                    try: df_imp = pd.read_csv(ficheiro_import_fin, encoding="utf-8", sep=None, engine="python")
                                     except UnicodeDecodeError:
                                         ficheiro_import_fin.seek(0)
                                         df_imp = pd.read_csv(ficheiro_import_fin, encoding="latin1", sep=None, engine="python")
-                                else: 
-                                    df_imp = pd.read_excel(ficheiro_import_fin)
-                                
+                                else: df_imp = pd.read_excel(ficheiro_import_fin)
                                 novos_movs = 0
                                 for _, row in df_imp.iterrows():
                                     tipo = str(row.get("Tipo", "")).strip().capitalize()
@@ -1241,21 +1148,17 @@ def pagina_financas():
                                     valor = pd.to_numeric(str(valor_raw).replace(",", "."), errors="coerce")
                                     data_raw = row.get("Data", "")
                                     data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != "" else hoje.strftime("%Y-%m-%d")
-
                                     if tipo in ["Despesa", "Receita"] and descricao and pd.notna(valor) and float(valor) > 0:
                                         session.add(Movimento(tipo=tipo, descricao=descricao, valor=float(valor), data=data_mov))
                                         novos_movs += 1
-                                        
                                 if novos_movs > 0:
                                     session.commit()
                                     registar_log("Tesouraria", f"Importou {novos_movs} movimentos por ficheiro")
                                     st.success(f"{novos_movs} movimentos importados com sucesso!")
                                     st.session_state.form_key += 1
                                     st.rerun()
-                                else:
-                                    st.warning("Não foram importados registos válidos.")
-                            except Exception as e:
-                                st.error(f"Erro ao processar o ficheiro: {e}")
+                                else: st.warning("Não foram importados registos válidos.")
+                            except Exception as e: st.error(f"Erro ao processar o ficheiro: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         movs = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim)).all()
@@ -1567,71 +1470,146 @@ def pagina_fornecedores():
 def pagina_ocorrencias():
     import time
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    st.header(":material/build: Gestão de Ocorrências")
+    st.header(":material/build: Operações e Manutenção")
     
-    if not st.session_state.modo_leitura:
-        with st.expander(":material/add_alert: Registar Nova Ocorrência"):
-            with st.form("f_oc"):
-                st.text_input("Reportado por", value=st.session_state.username, disabled=True)
-                tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
-                desc = st.text_area("Descrição detalhada do problem *", key=f"o_desc_{st.session_state.form_key}")
-                
-                st.write("**Provas Fotográficas (Opcional)**")
-                c1, c2 = st.columns(2)
-                with c1: foto1 = st.file_uploader("Fotografia 1", type=["jpg", "jpeg", "png"], key=f"o_f1_{st.session_state.form_key}")
-                with c2: foto2 = st.file_uploader("Fotografia 2", type=["jpg", "jpeg", "png"], key=f"o_f2_{st.session_state.form_key}")
-                
-                if st.form_submit_button("Reportar Ocorrência"):
-                    if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
-                    else:
-                        if not os.path.exists("uploads"): os.makedirs("uploads")
-                        caminho_f1, caminho_f2 = None, None
-                        timestamp_str = str(int(time.time()))
-                        
-                        if foto1:
-                            caminho_f1 = os.path.join("uploads", f"oc_{timestamp_str}_1_{foto1.name}")
-                            with open(caminho_f1, "wb") as f: f.write(foto1.getbuffer())
-                        if foto2:
-                            caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
-                            with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
+    tab_reparacoes, tab_preventiva = st.tabs(["🔧 Ocorrências (Reativas)", "🧯 Manutenção Preventiva"])
+    
+    with tab_reparacoes:
+        if not st.session_state.modo_leitura:
+            with st.expander(":material/add_alert: Registar Nova Ocorrência"):
+                with st.form("f_oc"):
+                    st.text_input("Reportado por", value=st.session_state.username, disabled=True)
+                    tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
+                    desc = st.text_area("Descrição detalhada do problem *", key=f"o_desc_{st.session_state.form_key}")
+                    
+                    st.write("**Provas Fotográficas (Opcional)**")
+                    c1, c2 = st.columns(2)
+                    with c1: foto1 = st.file_uploader("Fotografia 1", type=["jpg", "jpeg", "png"], key=f"o_f1_{st.session_state.form_key}")
+                    with c2: foto2 = st.file_uploader("Fotografia 2", type=["jpg", "jpeg", "png"], key=f"o_f2_{st.session_state.form_key}")
+                    
+                    if st.form_submit_button("Reportar Ocorrência"):
+                        if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
+                        else:
+                            if not os.path.exists("uploads"): os.makedirs("uploads")
+                            caminho_f1, caminho_f2 = None, None
+                            timestamp_str = str(int(time.time()))
+                            
+                            if foto1:
+                                caminho_f1 = os.path.join("uploads", f"oc_{timestamp_str}_1_{foto1.name}")
+                                with open(caminho_f1, "wb") as f: f.write(foto1.getbuffer())
+                            if foto2:
+                                caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
+                                with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
 
-                        session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"), criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2))
-                        session.commit()
-                        registar_log("Ocorrências", f"Abriu ocorrência: {tit}")
-                        st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
-                        st.session_state.form_key += 1; st.rerun()
+                            session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"), criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2))
+                            session.commit()
+                            registar_log("Ocorrências", f"Abriu ocorrência: {tit}")
+                            st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
 
-    ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
-    if ocs:
-        with st.container(border=True):
-            df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
-            evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
-        
-        if evento_oc.selection.rows:
-            st.markdown("<br>", unsafe_allow_html=True)
+        ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
+        if ocs:
             with st.container(border=True):
-                oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
-                col_info, col_estado, col_del = st.columns([2, 1, 1])
-                
-                col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
-                col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
-                
-                if oc_obj.foto1 or oc_obj.foto2:
-                    st.write("**Fotografias Anexadas:**")
-                    c_img1, c_img2 = st.columns(2)
-                    if oc_obj.foto1 and os.path.exists(oc_obj.foto1): c_img1.image(oc_obj.foto1, use_container_width=True)
-                    if oc_obj.foto2 and os.path.exists(oc_obj.foto2): c_img2.image(oc_obj.foto2, use_container_width=True)
+                df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
+                evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            
+            if evento_oc.selection.rows:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
+                    col_info, col_estado, col_del = st.columns([2, 1, 1])
+                    
+                    col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
+                    col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
+                    
+                    if oc_obj.foto1 or oc_obj.foto2:
+                        st.write("**Fotografias Anexadas:**")
+                        c_img1, c_img2 = st.columns(2)
+                        if oc_obj.foto1 and os.path.exists(oc_obj.foto1): c_img1.image(oc_obj.foto1, use_container_width=True)
+                        if oc_obj.foto2 and os.path.exists(oc_obj.foto2): c_img2.image(oc_obj.foto2, use_container_width=True)
 
-                if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
-                    if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
-                        oc_obj.resolvida = not oc_obj.resolvida
-                        session.commit()
-                        est_txt = "Reabriu" if not oc_obj.resolvida else "Resolveu"
-                        registar_log("Ocorrências", f"{est_txt} a ocorrência: {oc_obj.titulo}")
-                        st.rerun()
-                    if col_del.button(":material/delete: Apagar", width="stretch"):
-                        session.delete(oc_obj); session.commit(); st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
-    else: st.info("Nenhuma ocorrência neste período.")
+                    if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
+                        if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
+                            oc_obj.resolvida = not oc_obj.resolvida
+                            session.commit()
+                            est_txt = "Reabriu" if not oc_obj.resolvida else "Resolveu"
+                            registar_log("Ocorrências", f"{est_txt} a ocorrência: {oc_obj.titulo}")
+                            st.rerun()
+                        if col_del.button(":material/delete: Apagar", width="stretch"):
+                            session.delete(oc_obj); session.commit(); st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
+        else: st.info("Nenhuma ocorrência neste período.")
+
+    with tab_preventiva:
+        if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
+            with st.expander(":material/add_circle: Registar Novo Equipamento"):
+                with st.form("f_eq"):
+                    nome_eq = st.text_input("Equipamento / Infraestrutura (ex: Elevador Esq, Extintores Garagem) *", key=f"eq_n_{st.session_state.form_key}")
+                    local_eq = st.text_input("Localização", key=f"eq_l_{st.session_state.form_key}")
+                    data_ult = st.date_input("Data da Última Inspeção", value=hoje, key=f"eq_d1_{st.session_state.form_key}")
+                    data_prox = st.date_input("Data da Próxima Inspeção (Validade)", value=hoje + timedelta(days=365), key=f"eq_d2_{st.session_state.form_key}")
+                    notas = st.text_area("Notas / Empresa Responsável", key=f"eq_obs_{st.session_state.form_key}")
+
+                    if st.form_submit_button("Guardar Equipamento no Plano"):
+                        if not nome_eq.strip(): st.error("O Nome do equipamento é obrigatório!")
+                        else:
+                            session.add(Equipamento(
+                                nome=nome_eq, localizacao=local_eq,
+                                data_ultima_inspecao=data_ult.strftime("%Y-%m-%d"),
+                                data_proxima_inspecao=data_prox.strftime("%Y-%m-%d"),
+                                notas=notas
+                            ))
+                            session.commit()
+                            registar_log("Manutenção", f"Registou novo equipamento: {nome_eq}")
+                            st.session_state.toast = ("Equipamento registado!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
+
+        equipamentos = session.query(Equipamento).order_by(Equipamento.data_proxima_inspecao).all()
+        if equipamentos:
+            dados_eq = []
+            for eq in equipamentos:
+                estado = "🟢 OK"
+                try:
+                    d_prox = datetime.strptime(eq.data_proxima_inspecao, "%Y-%m-%d").date()
+                    dias = (d_prox - hoje).days
+                    if dias < 0: estado = "🔴 Expirado"
+                    elif dias <= 30: estado = f"🟡 Expira em {dias} dias"
+                except: pass
+
+                dados_eq.append({
+                    "ID": eq.id,
+                    "Equipamento": eq.nome,
+                    "Local": eq.localizacao,
+                    "Última Inspeção": eq.data_ultima_inspecao,
+                    "Próxima Inspeção": eq.data_proxima_inspecao,
+                    "Estado": estado
+                })
+
+            with st.container(border=True):
+                df_eq = pd.DataFrame(dados_eq)
+                evento_eq = st.dataframe(df_eq, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+
+            if evento_eq.selection.rows:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    eq_obj = session.get(Equipamento, int(df_eq.iloc[evento_eq.selection.rows[0]]["ID"]))
+                    col_i, col_a = st.columns([3, 1])
+                    col_i.info(f":material/push_pin: **{eq_obj.nome}** ({eq_obj.localizacao})")
+                    if eq_obj.notas: col_i.write(f"**Notas:** {eq_obj.notas}")
+
+                    if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+                        if col_a.button("✅ Renovar Inspeção", width="stretch", key=f"renov_{eq_obj.id}"):
+                            eq_obj.data_ultima_inspecao = hoje.strftime("%Y-%m-%d")
+                            try:
+                                eq_obj.data_proxima_inspecao = (hoje + timedelta(days=365)).strftime("%Y-%m-%d")
+                            except: pass
+                            session.commit()
+                            registar_log("Manutenção", f"Renovou a inspeção de: {eq_obj.nome}")
+                            st.rerun()
+
+                        if col_a.button("🗑️ Apagar", width="stretch", key=f"del_eq_{eq_obj.id}"):
+                            session.delete(eq_obj); session.commit(); st.rerun()
+        else:
+            st.info("Nenhum equipamento registado no plano de manutenção.")
 
 def pagina_assembleias():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1761,6 +1739,7 @@ def pagina_assembleias():
         else: st.info("Não existem votações de momento.")
 
 def pagina_mural():
+    from datetime import datetime
     st.header(":material/forum: Mural da Comunidade")
     st.write("Um espaço para partilhar anúncios, pedidos ou comunicados com os seus vizinhos.")
     
@@ -1810,7 +1789,7 @@ def gerar_snapshot_json():
         "movimentos": Movimento, "quotas": Quota, "ocorrencias": Ocorrencia,
         "documentos": Documento, "fornecedores": Fornecedor, "assembleias": Assembleia,
         "sondagens": Sondagem, "votos_sondagem": VotoSondagem, "anuncios": Anuncio,
-        "logs_auditoria": LogAuditoria
+        "logs_auditoria": LogAuditoria, "equipamentos": Equipamento
     }
     for key, model in models_to_export.items():
         rows = session.query(model).all()
@@ -1831,6 +1810,7 @@ def restaurar_snapshot_json(json_str):
         session.query(Sondagem).delete()
         session.query(Anuncio).delete()
         session.query(Assembleia).delete()
+        session.query(Equipamento).delete()
         session.query(Ocorrencia).delete()
         session.query(Fornecedor).delete()
         session.query(Documento).delete()
@@ -1847,7 +1827,7 @@ def restaurar_snapshot_json(json_str):
             
         tabelas_fase2 = {
             "utilizadores": Utilizador, "orcamentos": Orcamento, "movimentos": Movimento,
-            "quotas": Quota, "ocorrencias": Ocorrencia, "documentos": Documento,
+            "quotas": Quota, "ocorrencias": Ocorrencia, "documentos": Documento, "equipamentos": Equipamento,
             "fornecedores": Fornecedor, "assembleias": Assembleia, "sondagens": Sondagem,
             "logs_auditoria": LogAuditoria
         }
@@ -1864,7 +1844,7 @@ def restaurar_snapshot_json(json_str):
         
         if engine.name == 'postgresql':
             from sqlalchemy import text
-            tabelas_seq = ['logs_auditoria', 'votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos']
+            tabelas_seq = ['logs_auditoria', 'votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'equipamentos', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos']
             for tabela in tabelas_seq:
                 try:
                     max_id = session.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {tabela};")).scalar()
@@ -1994,6 +1974,7 @@ def pagina_configuracoes():
                                     session.query(Sondagem).delete()
                                     session.query(Anuncio).delete()
                                     session.query(Assembleia).delete()
+                                    session.query(Equipamento).delete()
                                     session.query(Ocorrencia).delete()
                                     session.query(Fornecedor).delete()
                                     session.query(Documento).delete()
@@ -2005,7 +1986,7 @@ def pagina_configuracoes():
                                     session.commit()
                                     
                                     if engine.name == "postgresql":
-                                        tabelas = ["logs_auditoria", "votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos"]
+                                        tabelas = ["logs_auditoria", "votos_sondagem", "sondagens", "anuncios", "assembleias", "equipamentos", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos"]
                                         for tabela in tabelas:
                                             try: session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
                                             except Exception: session.rollback()
@@ -2048,12 +2029,14 @@ else:
                 st.Page(pagina_financas, title="Finanças & Extratos", icon=":material/account_balance:"), 
                 st.Page(pagina_recibos, title="Emissão de Recibos", icon=":material/receipt_long:")
             ],
-            "OPERAÇÕES & COMUNIDADE": [
+            "OPERAÇÕES E MANUTENÇÃO": [
+                st.Page(pagina_ocorrencias, title="Ocorrências e Manutenção", icon=":material/build:"),
+                st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:")
+            ],
+            "COMUNIDADE": [
                 st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"),
                 st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"),
-                st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"),
-                st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"),
-                st.Page(pagina_ocorrencias, title="Ocorrências", icon=":material/build:")
+                st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:")
             ],
             "SISTEMA": [
                 st.Page(pagina_acessos, title="Gestão de Acessos", icon=":material/admin_panel_settings:"),
@@ -2083,7 +2066,7 @@ else:
         if st.session_state.perm_assembleias: op_pages.append(st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"))
         if st.session_state.perm_arquivo: op_pages.append(st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"))
         if st.session_state.perm_fornecedores: op_pages.append(st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"))
-        if st.session_state.perm_ocorrencias: op_pages.append(st.Page(pagina_ocorrencias, title="Ocorrências", icon=":material/build:"))
+        if st.session_state.perm_ocorrencias: op_pages.append(st.Page(pagina_ocorrencias, title="Ocorrências e Manutenção", icon=":material/build:"))
         if op_pages: nav_morador["CONDOMÍNIO"] = op_pages
             
         pg = st.navigation(nav_morador)
