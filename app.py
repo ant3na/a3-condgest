@@ -1897,8 +1897,8 @@ def pagina_configuracoes():
                         st.error(f"Erro ao comprimir dados: {e_snap}")
                         
                 with c_snap2:
-                    st.write("**2. Importar a partir de Segurança:**")
-                    arq_import_json = st.file_uploader("Carregar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
+                    st.write("**2. Restore Segurança:**")
+                    arq_import_json = st.file_uploader("Importar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
                     if arq_import_json is not None:
                         if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
                             conteudo_json_string = arq_import_json.read().decode("utf-8")
@@ -1916,19 +1916,19 @@ def pagina_configuracoes():
             # --- ÁREA 2: BACKUPS PARCIAIS (EXCEL) ---
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
-                st.subheader("📊 Exportações Parciais (Tabelas de Trabalho Excel)")
+                st.subheader("📊 Exportações Parciais (Excel)")
                 col_b1, col_b2 = st.columns(2)
                 
                 df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
                 if not df_backup_cond.empty:
                     csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b1.download_button("📥 Descarregar Tabela de Moradores (CSV)", data=csv_cond, file_name=f"Lista_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    col_b1.download_button("📥 Descarregar Tabela de Condónimos (CSV)", data=csv_cond, file_name=f"Lista_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b1.info("Sem dados de moradores.")
                     
                 df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
                 if not df_backup_fin.empty:
                     csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b2.download_button("📥 Descarregar Livro de Contas (CSV)", data=csv_fin, file_name=f"Movimentos_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    col_b2.download_button("📥 Descarregar Finanças e Extratos (CSV)", data=csv_fin, file_name=f"Movimentos_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b2.info("Sem dados financeiros.")
             
             # --- ÁREA 3: ZONA DE PERIGO (RESET) ---
