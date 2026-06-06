@@ -542,7 +542,7 @@ def pagina_login():
             
             st.markdown("""
             <div style='text-align: center;'>
-                <h2 style='margin-bottom: 0px; color: #1e293b;'>A3.Cond.Gest</h2>
+                <h2 style='margin-bottom: 0px; color: #1e293b;'>Portal do Condomínio</h2>
                 <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Portal de Administração e Moradores</p>
             </div>
             """, unsafe_allow_html=True)
@@ -585,7 +585,7 @@ def pagina_login():
                             
             st.markdown("""
             <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #94a3b8; font-size: 11px;'>© 2026 Condomínio Seguro | Versão 2.0</p>
+                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.0</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1829,17 +1829,17 @@ def restaurar_snapshot_json(json_str):
                 except Exception: session.rollback()
             session.commit()
             
-        return True, "Base de dados restaurada com sucesso a partir do Snapshot!"
+        return True, "Base de dados restaurada com sucesso a partir da Segurança"
     except Exception as e:
         session.rollback()
-        return False, f"Falha no restauro. Detalhe: {str(e)}"
+        return False, f"Falha no restauro da Segurança. Detalhe: {str(e)}"
 
 def pagina_configuracoes():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/settings: Configurações e Segurança")
     
     if not st.session_state.modo_leitura:
-        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Cópias & Zona de Perigo"])
+        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Backup de Dados & Reset BD"])
         
         with tab_geral:
             with st.container(border=True):
@@ -1877,8 +1877,8 @@ def pagina_configuracoes():
         with tab_seguranca:
             # --- ÁREA 1: SNAPSHOT JSON PREMIUM COMPLETO (DUMP / RESTORE) ---
             with st.container(border=True):
-                st.subheader("📦 Snapshot Completo da Base de Dados (DUMP Relacional)")
-                st.write("Exporte ou restaure toda a base de dados (estrutura, chaves e moradores) num único ficheiro de salvaguarda.")
+                st.subheader("📦 Segurança Completa da Base de Dados")
+                st.write("Processo de Exportação e Importação da Base de Dados num unico ficheiro.")
                 
                 c_snap1, c_snap2 = st.columns(2)
                 with c_snap1:
@@ -1886,21 +1886,21 @@ def pagina_configuracoes():
                     try:
                         dados_json_dump = gerar_snapshot_json()
                         st.download_button(
-                            "📥 Descarregar Dump Completo (.json)",
+                            "📥 Descarregar Segurança Completa (.json)",
                             data=dados_json_dump,
-                            file_name=f"SNAPSHOT_TOTAL_CONDOMINIO_{date.today()}.json",
+                            file_name=f"DUMP_CONDOMINIO_{date.today()}.json",
                             mime="application/json",
                             use_container_width=True,
                             type="secondary"
                         )
                     except Exception as e_snap:
-                        st.error(f"Erro ao empacotar dados: {e_snap}")
+                        st.error(f"Erro ao comprimir dados: {e_snap}")
                         
                 with c_snap2:
-                    st.write("**2. Restaurar a partir de Snapshot:**")
+                    st.write("**2. Restaurar a partir de Segurança:**")
                     arq_import_json = st.file_uploader("Carregar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
                     if arq_import_json is not None:
-                        if st.button("🔄 Executar Restauro Completo Agora", use_container_width=True, type="primary"):
+                        if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
                             conteudo_json_string = arq_import_json.read().decode("utf-8")
                             sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
                             if sucesso:
@@ -1935,7 +1935,7 @@ def pagina_configuracoes():
             if st.session_state.perfil == "Admin":
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
-                    st.subheader("🚨 Zona de Perigo (Reset de Dados)")
+                    st.subheader("🚨 Zona de Perigo 🚨")
                     st.warning("Atenção: Esta operação apaga permanentemente todos os registos. A estrutura de colunas mantém-se pronta para uso ou para receber uma importação.")
                     confirmar_reset = st.checkbox("Eu compreendo os riscos e quero apagar a base de dados.")
                     
@@ -1968,7 +1968,7 @@ def pagina_configuracoes():
                                             except Exception: session.rollback()
                                         session.commit()
                                     
-                                    st.success("✔️ Limpeza concluída e IDs repostos a 1!")
+                                    st.success("✔️ Limpeza da Base de Dados concluída")
                                     time.sleep(1.5)
                                     st.session_state.logado = False
                                     st.session_state.username = None
