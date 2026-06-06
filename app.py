@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_
 from io import BytesIO
 
-# Importações limpas e completas dos nossos módulos refatorados (INCLUINDO EQUIPAMENTO E LOGAUDITORIA)
+# Importações limpas e completas dos nossos módulos refatorados (INCLUINDO EQUIPAMENTO)
 from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, LogAuditoria, Equipamento
 from db import init_db, get_session, engine
 
@@ -404,11 +404,9 @@ def gerar_pdf_ata(a):
     elements.append(Paragraph(f"<b>Data de Realização:</b> {a.data_agendada}", style_normal))
     elements.append(Spacer(1, 15))
     if a.texto_ata:
-        for p in a.texto_ata.split("
-"):
+        for p in a.texto_ata.split('\n'):
             if p.strip():
-                elements.append(Paragraph(p.strip().replace("
-", "<br/>"), style_normal))
+                elements.append(Paragraph(p.strip().replace('\n', '<br/>'), style_normal))
     elements.append(Spacer(1, 25))
     elements.append(Paragraph("<i>Ata redigida e processada informaticamente pelo sistema A3.Cond.Gest.</i>", style_normal))
     def cabecalho_ata(canvas_obj, doc_obj): desenhar_cabecalho_pdf(canvas_obj, doc_obj, "ATA DE ASSEMBLEIA", f"Ref: ATA-{a.id:04d}")
@@ -613,9 +611,7 @@ def pagina_dashboard_morador():
     st.subheader(f"Fração: {cond.fracao} | Permilagem: {cond.permilagem}‰")
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        st.info(f"📢 **Aviso da Administração:**
-
-{config['AVISO_GLOBAL']}")
+        st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
     with st.expander(":material/key: Alterar a minha Password", expanded=False):
         with st.form("form_pwd"):
@@ -767,9 +763,7 @@ def pagina_dashboard():
     """, unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        st.info(f"📢 **Aviso da Administração:**
-
-{config['AVISO_GLOBAL']}")
+        st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
     col1, col2, col3, col4 = st.columns(4)
     total_cond = session.query(Condomino).count()
@@ -1006,7 +1000,6 @@ def pagina_quotas():
         <p style="font-size: 18px; color: #64748b; font-weight: 500;">{label_periodo}</p>
     </div>
     """, unsafe_allow_html=True)
-    
     valor_quota_padrao = config.get("VALOR_MENSAL_FIXO", 50.00)
     
     if st.session_state.perfil == "Admin":
@@ -1097,14 +1090,9 @@ def pagina_quotas():
                     emails_enviados = 0
                     for d in dividas:
                         if d.condomino.email:
-                            corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},
-
-Verificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.
-
-Por favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}
-
-A Administração."
-                            if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email): emails_enviados += 1
+                            corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},\n\nVerificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
+                            if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email):
+                                emails_enviados += 1
                     if emails_enviados > 0: 
                         registar_log("Quotas", f"Disparou {emails_enviados} avisos de dívida em lote")
                         st.success(f"{emails_enviados} avisos enviados com sucesso!")
@@ -1129,16 +1117,8 @@ A Administração."
                             st.rerun()
                         if st.session_state.perfil == "Admin":
                             with col_aviso.popover(":material/mail: Enviar Aviso Individual"):
-                                corpo_email = f"Exmo(a) Sr(a) {quota_obj.condomino.nome},
-
-Encontra-se a pagamento a quota de {quota_obj.mes_ano} no valor de {quota_obj.valor:.2f} €.
-
-Por favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}
-
-A Administração."
-                                st.markdown(f"**Mensagem:**
-
-{corpo_email}")
+                                corpo_email = f"Exmo(a) Sr(a) {quota_obj.condomino.nome},\n\nEncontra-se a pagamento a quota de {quota_obj.mes_ano} no valor de {quota_obj.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
+                                st.markdown(f"**Mensagem:**\n\n{corpo_email}")
                                 if st.button("Confirmar Envio", key=f"mail_aviso_{quota_obj.id}", width="stretch"):
                                     if quota_obj.condomino.email:
                                         if enviar_email_real(quota_obj.condomino.email, f"Aviso de Pagamento - {quota_obj.mes_ano}", corpo_email): 
@@ -1157,9 +1137,7 @@ A Administração."
 def pagina_financas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/account_balance: Finanças e Fluxo de Caixa")
-    
-    titulo_extrato = f"📅 Extrato do Período ({mes_sel})" if mes_sel != "Todos (Ano Completo)" else f"📅 Extrato Anual Completo ({ano_sel})"
-    tab_mes, tab_ano = st.tabs([titulo_extrato, f"📈 Relatório de Contas (Global {ano_sel})"])
+    tab_mes, tab_ano = st.tabs([f"📅 Extrato Mensal ({mes_sel})", f"📈 Relatório Anual (Fecho de Contas {ano_sel})"])
 
     with tab_mes:
         if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
@@ -1315,12 +1293,7 @@ def pagina_financas():
                         condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                         emails_enviados = 0
                         for c in condominos_com_email:
-                            corpo_email = f"Exmo(a) Sr(a) {c.nome},
-
-Junto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.
-
-Cumprimentos,
-A Administração."
+                            corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.\n\nCumprimentos,\nA Administração."
                             if enviar_email_real(c.email, f"Relatório de Contas Anual - {ano_sel}", corpo_email, anexo_bytes=pdf_bytes_anual, nome_anexo=f"Relatorio_Contas_{ano_sel}.pdf"):
                                 emails_enviados += 1
                         if emails_enviados > 0: 
@@ -1395,8 +1368,7 @@ def pagina_recibos():
                     </p>
                 </div>
                 """
-                st.markdown(html_recibo.replace("
-", ""), unsafe_allow_html=True)
+                st.markdown(html_recibo.replace("\n", ""), unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 col1, col2 = st.columns(2)
@@ -1411,9 +1383,7 @@ def pagina_recibos():
                         if st.session_state.perfil == "Admin":
                             if st.button(":material/send: Enviar Confirmação Simples", width="stretch"):
                                 if q.condomino.email:
-                                    corpo = f"Exmo(a) Sr(a) {q.condomino.nome},
-Confirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.
-A Administração."
+                                    corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
                                     if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): 
                                         registar_log("Comunicações", f"Enviou e-mail de recibo simples à Fr. {q.condomino.fracao}")
                                         st.toast("Enviado!", icon="✅")
@@ -1421,9 +1391,7 @@ A Administração."
                             if REPORTLAB_INSTALLED:
                                 if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
                                     if q.condomino.email:
-                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},
-Segue em anexo o recibo oficial em PDF.
-A Administração."
+                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo oficial em PDF.\nA Administração."
                                         if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): 
                                             registar_log("Comunicações", f"Enviou PDF de recibo oficial à Fr. {q.condomino.fracao}")
                                             st.toast("Enviado!", icon="🎉")
@@ -1539,13 +1507,9 @@ def pagina_fornecedores():
                 c_info.info(f":material/push_pin: **{forn_obj.nome}** ({forn_obj.categoria})")
                 detalhes = f"**Responsável:** {forn_obj.responsavel if forn_obj.responsavel else 'N/D'} | "
                 detalhes += f"**Telefone:** {forn_obj.telefone if forn_obj.telefone else 'N/D'} | "
-                detalhes += f"**Email:** {forn_obj.email if forn_obj.email else 'N/D'}
-
-"
+                detalhes += f"**Email:** {forn_obj.email if forn_obj.email else 'N/D'}\n\n"
                 detalhes += f"**NIF:** {forn_obj.nif if forn_obj.nif else 'N/D'} | "
-                detalhes += f"**IBAN:** {forn_obj.iban if forn_obj.iban else 'N/D'}
-
-"
+                detalhes += f"**IBAN:** {forn_obj.iban if forn_obj.iban else 'N/D'}\n\n"
                 detalhes += f"**Observações:** {forn_obj.observacoes if forn_obj.observacoes else '-'}"
                 c_info.write(detalhes)
                 
@@ -1724,15 +1688,7 @@ def pagina_assembleias():
                                 condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                 emails_enviados = 0
                                 for c in condominos_com_email:
-                                    corpo = f"Exmo(a) Sr(a) {c.nome},
-
-Convocatória para a reunião de condomínio: {tit}.
-Data: {data_reuniao.strftime('%d/%m/%Y')}
-
-Assuntos:
-{assuntos}
-
-Administração."
+                                    corpo = f"Exmo(a) Sr(a) {c.nome},\n\nConvocatória para a reunião de condomínio: {tit}.\nData: {data_reuniao.strftime('%d/%m/%Y')}\n\nAssuntos:\n{assuntos}\n\nAdministração."
                                     if enviar_email_real(c.email, f"Convocatória - {tit}", corpo): emails_enviados += 1
                                 st.session_state.toast = (f"Assembleia agendada! {emails_enviados} convites enviados.", "✅")
                             else: st.session_state.toast = ("Assembleia agendada!", "✅")
