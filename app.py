@@ -116,7 +116,7 @@ def formatar_username(nome_completo):
 init_db()
 session = get_session()
 
-st.set_page_config(page_title="Portal do Condomínio", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="A3® Portal do Condomínio", page_icon="🏢", layout="wide")
 
 caminho_logo = "logo.png"
 
@@ -542,7 +542,7 @@ def pagina_login():
             
             st.markdown("""
             <div style='text-align: center;'>
-                <h2 style='margin-bottom: 0px; color: #1e293b;'>Portal do Condomínio</h2>
+                <h2 style='margin-bottom: 0px; color: #1e293b;'>A3® Portal do Condomínio</h2>
                 <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Portal de Administração e Moradores</p>
             </div>
             """, unsafe_allow_html=True)
