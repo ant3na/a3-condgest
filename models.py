@@ -126,3 +126,11 @@ class Anuncio(Base):
     data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d %H:%M"))
     criado_por = Column(String, nullable=False)
     fracao = Column(String, nullable=True)
+
+class LogAuditoria(Base):
+    __tablename__ = 'logs_auditoria'
+    id = Column(Integer, primary_key=True)
+    data_hora = Column(String, nullable=False)
+    utilizador = Column(String, nullable=False)
+    acao = Column(String, nullable=False)
+    detalhe = Column(String, nullable=True)
