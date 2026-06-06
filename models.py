@@ -134,3 +134,12 @@ class LogAuditoria(Base):
     utilizador = Column(String, nullable=False)
     acao = Column(String, nullable=False)
     detalhe = Column(String, nullable=True)
+
+class Equipamento(Base):
+    __tablename__ = 'equipamentos'
+    id = Column(Integer, primary_key=True)
+    nome = Column(String, nullable=False)
+    localizacao = Column(String, nullable=True)
+    data_ultima_inspecao = Column(String, nullable=True)
+    data_proxima_inspecao = Column(String, nullable=True)
+    notas = Column(String, nullable=True)
