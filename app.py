@@ -1759,12 +1759,87 @@ def pagina_mural():
                             session.delete(a); session.commit(); st.rerun()
     else: st.info("O mural está silencioso. Seja o primeiro a publicar algo!")
 
+# --- HELPER FUNCTIONS PARA DUMP COMPLETO JSON ---
+def gerar_snapshot_json():
+    db_dump = {}
+    models_to_export = {
+        "condominos": Condomino, "utilizadores": Utilizador, "orcamentos": Orcamento,
+        "movimentos": Movimento, "quotas": Quota, "ocorrencias": Ocorrencia,
+        "documentos": Documento, "fornecedores": Fornecedor, "assembleias": Assembleia,
+        "sondagens": Sondagem, "votos_sondagem": VotoSondagem, "anuncios": Anuncio
+    }
+    for key, model in models_to_export.items():
+        rows = session.query(model).all()
+        list_rows = []
+        for r in rows:
+            d = {col.name: getattr(r, col.name) for col in r.__table__.columns}
+            list_rows.append(d)
+        db_dump[key] = list_rows
+    return json.dumps(db_dump, indent=4, ensure_ascii=False)
+
+def restaurar_snapshot_json(json_str):
+    try:
+        data = json.loads(json_str)
+        session.rollback()
+        
+        # 1. Limpar Tudo (Reset Suave Prévio)
+        session.query(VotoSondagem).delete()
+        session.query(Sondagem).delete()
+        session.query(Anuncio).delete()
+        session.query(Assembleia).delete()
+        session.query(Ocorrencia).delete()
+        session.query(Fornecedor).delete()
+        session.query(Documento).delete()
+        session.query(Movimento).delete()
+        session.query(Orcamento).delete()
+        session.query(Quota).delete()
+        session.query(Utilizador).delete()
+        session.query(Condomino).delete()
+        session.commit()
+        
+        # 2. Injeção Ordenada Estrita
+        if "condominos" in data:
+            for r in data["condominos"]: session.add(Condomino(**r))
+            session.commit()
+            
+        tabelas_fase2 = {
+            "utilizadores": Utilizador, "orcamentos": Orcamento, "movimentos": Movimento,
+            "quotas": Quota, "ocorrencias": Ocorrencia, "documentos": Documento,
+            "fornecedores": Fornecedor, "assembleias": Assembleia, "sondagens": Sondagem
+        }
+        for key, model in tabelas_fase2.items():
+            if key in data:
+                for r in data[key]: session.add(model(**r))
+        session.commit()
+        
+        if "votos_sondagem" in data:
+            for r in data["votos_sondagem"]: session.add(VotoSondagem(**r))
+        if "anuncios" in data:
+            for r in data["anuncios"]: session.add(Anuncio(**r))
+        session.commit()
+        
+        # 3. Sincronizar Sequências do PostgreSQL
+        if engine.name == 'postgresql':
+            from sqlalchemy import text
+            tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos']
+            for tabela in tabelas_seq:
+                try:
+                    max_id = session.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {tabela};")).scalar()
+                    session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH {max_id + 1};"))
+                except Exception: session.rollback()
+            session.commit()
+            
+        return True, "Base de dados restaurada com sucesso a partir do Snapshot!"
+    except Exception as e:
+        session.rollback()
+        return False, f"Falha no restauro. Detalhe: {str(e)}"
+
 def pagina_configuracoes():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/settings: Configurações e Segurança")
     
     if not st.session_state.modo_leitura:
-        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Zona de Perigo"])
+        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Cópias & Zona de Perigo"])
         
         with tab_geral:
             with st.container(border=True):
@@ -1782,7 +1857,7 @@ def pagina_configuracoes():
                         config["IBAN_CONDOMINIO"] = iban
                         config["VALOR_MENSAL_FIXO"] = valor_quota
                         guardar_configs(config)
-                        st.session_state.toast = ("Configurações atualizadas!", "✅")
+                        st.session_state.toast = ("Configurações updated!", "✅")
                         st.session_state.form_key += 1; st.rerun()
                         
         with tab_avisos:
@@ -1800,27 +1875,68 @@ def pagina_configuracoes():
                         st.session_state.form_key += 1; st.rerun()
                         
         with tab_seguranca:
+            # --- ÁREA 1: SNAPSHOT JSON PREMIUM COMPLETO (DUMP / RESTORE) ---
             with st.container(border=True):
-                st.subheader("Cópia de Segurança (Backup Cloud)")
+                st.subheader("📦 Snapshot Completo da Base de Dados (DUMP Relacional)")
+                st.write("Exporte ou restaure toda a base de dados (estrutura, chaves e moradores) num único ficheiro de salvaguarda.")
+                
+                c_snap1, c_snap2 = st.columns(2)
+                with c_snap1:
+                    st.write("**1. Criar Salvaguarda Externa:**")
+                    try:
+                        dados_json_dump = gerar_snapshot_json()
+                        st.download_button(
+                            "📥 Descarregar Dump Completo (.json)",
+                            data=dados_json_dump,
+                            file_name=f"SNAPSHOT_TOTAL_CONDOMINIO_{date.today()}.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                    except Exception as e_snap:
+                        st.error(f"Erro ao empacotar dados: {e_snap}")
+                        
+                with c_snap2:
+                    st.write("**2. Restaurar a partir de Snapshot:**")
+                    arq_import_json = st.file_uploader("Carregar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
+                    if arq_import_json is not None:
+                        if st.button("🔄 Executar Restauro Completo Agora", use_container_width=True, type="primary"):
+                            conteudo_json_string = arq_import_json.read().decode("utf-8")
+                            sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
+                            if sucesso:
+                                st.success(msg_res)
+                                import time
+                                time.sleep(2)
+                                st.session_state.logado = False
+                                st.session_state.username = None
+                                st.rerun()
+                            else:
+                                st.error(msg_res)
+
+            # --- ÁREA 2: BACKUPS PARCIAIS (EXCEL) ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.container(border=True):
+                st.subheader("📊 Exportações Parciais (Tabelas de Trabalho Excel)")
                 col_b1, col_b2 = st.columns(2)
                 
                 df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
                 if not df_backup_cond.empty:
                     csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b1.download_button("📥 Descarregar Moradores (Excel)", data=csv_cond, file_name=f"Backup_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    col_b1.download_button("📥 Descarregar Tabela de Moradores (CSV)", data=csv_cond, file_name=f"Lista_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b1.info("Sem dados de moradores.")
                     
                 df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
                 if not df_backup_fin.empty:
                     csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b2.download_button("📥 Descarregar Contas (Excel)", data=csv_fin, file_name=f"Backup_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    col_b2.download_button("📥 Descarregar Livro de Contas (CSV)", data=csv_fin, file_name=f"Movimentos_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
                 else: col_b2.info("Sem dados financeiros.")
             
+            # --- ÁREA 3: ZONA DE PERIGO (RESET) ---
             if st.session_state.perfil == "Admin":
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
                     st.subheader("🚨 Zona de Perigo (Reset de Dados)")
-                    st.warning("Atenção: Esta operação apaga permanentemente todos os registos. A estrutura de colunas e permissões premium mantém-se.")
+                    st.warning("Atenção: Esta operação apaga permanentemente todos os registos. A estrutura de colunas mantém-se pronta para uso ou para receber uma importação.")
                     confirmar_reset = st.checkbox("Eu compreendo os riscos e quero apagar a base de dados.")
                     
                     if confirmar_reset:
