@@ -1882,11 +1882,11 @@ def pagina_configuracoes():
                 
                 c_snap1, c_snap2 = st.columns(2)
                 with c_snap1:
-                    st.write("**1. Criar Salvaguarda Externa:**")
+                    st.write("**1. Backup da Segurança:**")
                     try:
                         dados_json_dump = gerar_snapshot_json()
                         st.download_button(
-                            "📥 Descarregar Segurança Completa (.json)",
+                            "📥 Exportar Segurança Completa (.json)",
                             data=dados_json_dump,
                             file_name=f"DUMP_CONDOMINIO_{date.today()}.json",
                             mime="application/json",
@@ -1897,7 +1897,7 @@ def pagina_configuracoes():
                         st.error(f"Erro ao comprimir dados: {e_snap}")
                         
                 with c_snap2:
-                    st.write("**2. Restaurar a partir de Segurança:**")
+                    st.write("**2. Importar a partir de Segurança:**")
                     arq_import_json = st.file_uploader("Carregar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
                     if arq_import_json is not None:
                         if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
