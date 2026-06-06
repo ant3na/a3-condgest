@@ -1672,7 +1672,7 @@ def pagina_assembleias():
     with tab_reunioes:
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             with st.expander(":material/add_alert: Agendar Nova Assembleia"):
-                with st.form("f_ass"):
+                with st.form("f_ass", clear_on_submit=True):
                     tit = st.text_input("Título *", key=f"a_t_{st.session_state.form_key}")
                     data_reuniao = st.date_input("Data da Reunião", key=f"a_d_{st.session_state.form_key}")
                     assuntos = st.text_area("Ordem de Trabalhos (Assuntos) *", key=f"a_a_{st.session_state.form_key}")
@@ -1713,8 +1713,10 @@ def pagina_assembleias():
                     if r.realizada:
                         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                             with st.expander("📝 Redigir / Exportar Ata Digital", expanded=False):
-                                texto_atual = r.texto_ata if r.texto_ata else "Decisões tomadas na reunião de condomínio..."
-                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=150, key=f"ata_txt_{r.id}")
+                                texto_por_defeito = f"Ao xxx dia do mês de xxx de dois mil e vinte e xxx pelas xxx horas e xxx minutos, reuniram no hall do prédio, a assembleia extraordinária de condóminos do condomínio do edifício em propriedade horizontal da Praceta Antero de Quental, Nº5, freguesia de Quinta do Anjo, conselho de Palmela, NIPC 901571253, para deliberar sobre os seguintes assuntos:\n\n{r.assuntos}\n\n[Escreva aqui as decisões tomadas...]"
+                                texto_atual = r.texto_ata if r.texto_ata else texto_por_defeito
+                                
+                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=250, key=f"ata_txt_{r.id}")
                                 if st.button("💾 Gravar Ata", key=f"save_{r.id}", type="primary"):
                                     r.texto_ata = novo_texto; session.commit(); st.toast("Gravado!", icon="✅")
                                 
@@ -1747,7 +1749,8 @@ def pagina_assembleias():
     with tab_votos:
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             with st.expander(":material/poll: Criar Nova Sondagem"):
-                with st.form("f_sond"):
+                # Adicionado clear_on_submit=True para limpar após criar a votação
+                with st.form("f_sond", clear_on_submit=True):
                     perg = st.text_input("Pergunta / Assunto a Votar *")
                     opcoes_str = st.text_input("Opções (separadas por vírgula) *", value="Favor, Contra, Abstenção")
                     if st.form_submit_button("Criar Votação"):
@@ -1785,10 +1788,17 @@ def pagina_assembleias():
 
                     if st.session_state.perfil == "Admin":
                         c_act1, c_act2 = st.columns(2)
-                        if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): s.ativa = not s.ativa; session.commit(); st.rerun()
-                        if c_act2.button("Apagar Votação", key=f"del_s_{s.id}"):
+                        if c_act1.button("Alternar Estado (Abrir/Fechar)", key=f"alt_{s.id}"): 
+                            s.ativa = not s.ativa
+                            session.commit()
+                            st.rerun()
+                        
+                        # O botão de apagar só está ativo se s.ativa for False
+                        if c_act2.button("Apagar Votação", key=f"del_s_{s.id}", disabled=s.ativa, help="Encerre a votação para poder apagar."):
                             session.query(VotoSondagem).filter_by(sondagem_id=s.id).delete()
-                            session.delete(s); session.commit(); st.rerun()
+                            session.delete(s)
+                            session.commit()
+                            st.rerun()
         else: st.info("Não existem votações de momento.")
 
 def pagina_mural():
