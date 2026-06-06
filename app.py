@@ -1897,7 +1897,7 @@ def pagina_configuracoes():
                         st.error(f"Erro ao comprimir dados: {e_snap}")
                         
                 with c_snap2:
-                    st.write("**2. Restore Segurança:**")
+                    st.write("**2. Restore da Segurança:**")
                     arq_import_json = st.file_uploader("Importar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
                     if arq_import_json is not None:
                         if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
