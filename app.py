@@ -72,7 +72,7 @@ if REPORTLAB_INSTALLED:
             self.drawRightString(545, 30, texto_pagina)
             
             # Identificador institucional fixo
-            self.drawString(50, 30, "A3.Cond.Gest — Relatório de Gestão Oficial")
+            self.drawString(50, 30, "Portal do Condomínio — Relatório de Gestão Oficial")
             self.restoreState()
 
 # ==========================================
@@ -116,7 +116,7 @@ def formatar_username(nome_completo):
 init_db()
 session = get_session()
 
-st.set_page_config(page_title="A3.Cond.Gest", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="Portal do Condomínio", page_icon="🏢", layout="wide")
 
 caminho_logo = "logo.png"
 
@@ -459,7 +459,7 @@ def gerar_pdf_ata(a):
                 elements.append(Paragraph(p.strip().replace("\n", "<br/>"), style_normal))
                 
     elements.append(Spacer(1, 25))
-    elements.append(Paragraph("<i>Ata redigida e processada informaticamente pelo sistema A3.Cond.Gest.</i>", style_normal))
+    elements.append(Paragraph("<i>Ata redigida e processada informaticamente pelo sistema Portal do Condomínio.</i>", style_normal))
 
     def cabecalho_ata(canvas_obj, doc_obj):
         desenhar_cabecalho_pdf(canvas_obj, doc_obj, "ATA DE ASSEMBLEIA", f"Ref: ATA-{a.id:04d}")
@@ -491,7 +491,7 @@ def configurar_sidebar():
     if os.path.exists("logo.png"):
         col1, col2, col3 = st.sidebar.columns([1, 2.5, 1])
         with col2: st.image("logo.png", width="stretch")
-    st.sidebar.title(":material/corporate_fare: A3.Cond.Gest")
+    st.sidebar.title(":material/corporate_fare: Portal do Condomínio")
     st.sidebar.markdown("---")
     
     if st.session_state.logado:
