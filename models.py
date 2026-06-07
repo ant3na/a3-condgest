@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import date
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -126,3 +127,22 @@ class Anuncio(Base):
     data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d %H:%M"))
     criado_por = Column(String, nullable=False)
     fracao = Column(String, nullable=True)
+
+class Auditoria(Base):
+    __tablename__ = 'auditoria'
+    id = Column(Integer, primary_key=True)
+    data_hora = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    username = Column(String, nullable=False)
+    acao = Column(String, nullable=False) # Ex: "LOGIN", "CRIAR_QUOTA", "APAGAR_DOCUMENTO"
+    detalhes = Column(String)             # Ex: "Apagou a ocorrência ID 5"
+
+class Manutencao(Base):
+    __tablename__ = 'manutencoes'
+    id = Column(Integer, primary_key=True)
+    equipamento = Column(String, nullable=False) # Ex: Elevador Bloco A, Extintores
+    descricao = Column(String, nullable=False)   # Ex: Inspeção Anual Obrigatória
+    data_planeada = Column(String, nullable=False) # YYYY-MM-DD
+    periodicidade = Column(String, default="Anual") # Mensal, Trimestral, Semestral, Anual
+    estado = Column(String, default="Pendente")  # Pendente, Concluído, Atrasado
+    fornecedor_id = Column(Integer, ForeignKey('fornecedores.id'), nullable=True)
+    observacoes = Column(String)
