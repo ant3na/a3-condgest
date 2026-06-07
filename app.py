@@ -14,7 +14,7 @@ from sqlalchemy import func, and_
 from io import BytesIO
 
 # Importações limpas e completas dos nossos módulos refatorados
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, Auditoria, Manutencao
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, Auditoria, Manutencao, NotificacaoLida
 from db import init_db, get_session, engine
 
 # ==========================================
@@ -510,16 +510,18 @@ st.markdown("""
 hoje = date.today()
 meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
-def verificar_notificacoes_pendentes(sessao_db, perfil, condomino_id):
+def verificar_notificacoes_pendentes(sessao_db, perfil, condomino_id, user_id):
     from datetime import datetime, date
     hoje_local = date.today()
-    lidos = st.session_state.get("alertas_lidos", []) # Puxa os lidos
+    
+    # Puxa os IDs lidos da Base de Dados para este utilizador
+    registos_lidos = sessao_db.query(NotificacaoLida).filter_by(utilizador_id=user_id).all()
+    lidos = [r.alerta_id for r in registos_lidos]
     
     # Alertas Globais
     ass_futuras = sessao_db.query(Assembleia).filter_by(realizada=False).all()
     for a in ass_futuras:
-        uid = f"ass_{a.id}" # Criar um ID único para este alerta
-        if uid not in lidos:
+        if f"ass_{a.id}" not in lidos:
             try:
                 d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
                 if (d_ass - hoje_local).days <= 5: return True
@@ -2045,21 +2047,29 @@ def pagina_notificacoes():
         except Exception: pass
 
     if st.session_state.condomino_id:
+        # Puxamos os lidos novamente para a página
+        registos_lidos = session.query(NotificacaoLida).filter_by(utilizador_id=st.session_state.user_id).all()
+        lidos = [r.alerta_id for r in registos_lidos]
+
         # 4. Quotas em Dívida
         dividas = session.query(Quota).filter_by(condomino_id=st.session_state.condomino_id, paga=False).all()
         for d in dividas:
             uid = f"quota_{d.id}"
-            if uid not in st.session_state.alertas_lidos:
+            
+            if uid not in lidos:
                 alertas_encontrados = True
                 col_alerta, col_btn = st.columns([5, 1])
                 
                 with col_alerta:
-                    st.error(f"**Tesouraria:** Quota em atraso ({d.mes_ano}) no valor de {d.valor:.2f} €.", icon="💰")
+                    st.error(f"**Tesouraria:** Tem a quota de {d.mes_ano} em atraso no valor de {d.valor:.2f} €.\n\n*Ação: Vá ao 'Dashboard' para ver o IBAN de pagamento.*", icon="💰")
                 
                 with col_btn:
                     st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("❌ Ocultar", key=f"btn_hide_{uid}", use_container_width=True):
-                        st.session_state.alertas_lidos.append(uid)
+                    if st.button("❌ Marcar Lida", key=f"btn_hide_{uid}", use_container_width=True):
+                        # Grava permanentemente na Base de Dados que este alerta foi oculto!
+                        novo_lido = NotificacaoLida(utilizador_id=st.session_state.user_id, alerta_id=uid)
+                        session.add(novo_lido)
+                        session.commit()
                         st.rerun()
             
         # 5. Votações Pendentes
