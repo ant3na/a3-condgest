@@ -1895,6 +1895,7 @@ def pagina_assembleias():
         else: st.info("Não existem votações de momento.")
 
 def pagina_mural():
+    mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/forum: Mural da Comunidade")
     st.write("Um espaço para partilhar anúncios, pedidos ou comunicados com os seus vizinhos.")
     
