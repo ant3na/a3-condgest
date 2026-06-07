@@ -146,3 +146,10 @@ class Manutencao(Base):
     estado = Column(String, default="Pendente")  # Pendente, Concluído, Atrasado
     fornecedor_id = Column(Integer, ForeignKey('fornecedores.id'), nullable=True)
     observacoes = Column(String)
+
+class NotificacaoLida(Base):
+    __tablename__ = 'notificacoes_lidas'
+    id = Column(Integer, primary_key=True)
+    utilizador_id = Column(Integer, ForeignKey('utilizadores.id'), nullable=False)
+    alerta_id = Column(String, nullable=False) # Identificador único. Ex: "quota_14", "oc_5"
+    data_leitura = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
