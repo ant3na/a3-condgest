@@ -6,6 +6,7 @@ import json
 import base64
 import smtplib
 import unicodedata
+import google.generativeai as genai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -635,6 +636,89 @@ def pagina_dashboard_morador():
             df_q = pd.DataFrame([{"Referência": q.mes_ano, "Valor": q.valor, "Estado": "🟢 Pago" if q.paga else "🔴 Em Dívida", "Data Pagamento": q.data_pagamento if q.paga else "-"} for q in quotas])
             st.dataframe(df_q, width="stretch", hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
         else: st.info("Ainda não existem registos na sua conta.")
+
+def pagina_assistente():
+    st.header(":material/smart_toy: Assistente Virtual do Condomínio")
+    st.write("Dúvidas sobre as suas quotas, próximas reuniões ou anúncios? Pergunte-me!")
+
+    if not st.session_state.condomino_id:
+        st.error("Precisa de estar associado a uma fração para usar o assistente.")
+        return
+
+    # 1. EXTRAÇÃO DE CONTEXTO (O RAG em ação)
+    cond = session.get(Condomino, st.session_state.condomino_id)
+    
+    # Dívidas do Morador
+    dividas = session.query(Quota).filter_by(condomino_id=cond.id, paga=False).all()
+    valor_divida = sum([q.valor for q in dividas])
+
+    # Próxima Reunião
+    prox_ass = session.query(Assembleia).filter(Assembleia.realizada == False).order_by(Assembleia.data_agendada).first()
+    ass_info = f"'{prox_ass.titulo}' no dia {prox_ass.data_agendada}" if prox_ass else "Nenhuma reunião agendada de momento."
+
+    # Últimos Anúncios
+    anuncios = session.query(Anuncio).order_by(Anuncio.id.desc()).limit(2).all()
+    anuncios_info = ", ".join([f"'{a.titulo}'" for a in anuncios]) if anuncios else "Nenhum anúncio recente."
+
+    # 2. INSTRUÇÃO DE SISTEMA (A "Personalidade" da IA)
+    system_prompt = f"""
+    És o assistente virtual do condomínio '{config.get('NOME_CONDOMINIO')}'.
+    Estás a falar diretamente com o condómino: {cond.nome} (Fração {cond.fracao}).
+    
+    Usa OBRIGATORIAMENTE este contexto real da base de dados para responder:
+    - Quotas em dívida do morador: {valor_divida:.2f} €.
+    - Próxima Assembleia Geral: {ass_info}
+    - Últimos Anúncios no Mural: {anuncios_info}
+    - IBAN do Condomínio para pagamentos: {config.get('IBAN_CONDOMINIO')}
+    
+    Regras:
+    1. Responde sempre em português de Portugal.
+    2. Sê muito educado, prestável e extremamente conciso.
+    3. Nunca inventes valores, datas ou regras que não estejam no contexto acima. Se não souberes algo, pede ao morador para contactar a Administração.
+    """
+
+    # 3. CONFIGURAÇÃO DA API
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    if not api_key:
+        st.warning("⚠️ Chave da API não configurada no ficheiro secrets.toml.")
+        return
+
+    genai.configure(api_key=api_key)
+    # Inicializar o modelo com a nossa instrução blindada
+    model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_prompt)
+
+    # 4. GESTÃO DA INTERFACE DE CHAT
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Renderizar histórico
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # 5. CAIXA DE INPUT E PROCESSAMENTO
+    prompt = st.chat_input("Pergunte algo (ex: Tenho quotas em atraso?)")
+    if prompt:
+        # Mostrar o que o utilizador escreveu
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Resposta da IA
+        with st.chat_message("assistant"):
+            with st.spinner("A consultar o condomínio..."):
+                try:
+                    # Formatar o histórico para o formato exigido pelo SDK da Google
+                    history_gemini = [{"role": "user" if m["role"] == "user" else "model", "parts": [m["content"]]} for m in st.session_state.chat_history[:-1]]
+                    
+                    chat = model.start_chat(history=history_gemini)
+                    response = chat.send_message(prompt)
+                    resposta_ia = response.text
+                    
+                    st.markdown(resposta_ia)
+                    st.session_state.chat_history.append({"role": "assistant", "content": resposta_ia})
+                except Exception as e:
+                    st.error(f"Ocorreu um erro na ligação à IA: {e}")
 
 def pagina_acessos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -2010,6 +2094,7 @@ else:
         nav_morador = {
             "A MINHA CONTA": [
                 st.Page(pagina_dashboard_morador, title="Conta Corrente", icon=":material/home:", default=True)
+                st.Page(pagina_assistente, title="Assistente Virtual", icon=":material/smart_toy:")
             ]
         }
         
