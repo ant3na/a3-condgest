@@ -510,34 +510,30 @@ hoje = date.today()
 meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
 def verificar_notificacoes_pendentes(sessao_db, perfil, condomino_id):
-    """
-    Verifica se existem notificações urgentes para o utilizador atual.
-    Retorna True (se houver notificações) ou False.
-    """
-    # 1. Notificações para Administradores
-    if perfil == "Admin":
-        # Tem ocorrências não resolvidas?
-        ocs_pendentes = sessao_db.query(Ocorrencia).filter_by(resolvida=False).count()
-        if ocs_pendentes > 0:
-            return True
-            
-        # Tem manutenções atrasadas ou pendentes?
-        manutencoes = sessao_db.query(Manutencao).filter_by(estado="Pendente").count()
-        if manutencoes > 0:
-            return True
+    from datetime import datetime, date
+    hoje_local = date.today()
+    
+    # Alertas Globais (Assembleias nos próximos 5 dias ou atrasadas)
+    ass_futuras = sessao_db.query(Assembleia).filter_by(realizada=False).all()
+    for a in ass_futuras:
+        try:
+            d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
+            if (d_ass - hoje_local).days <= 5: 
+                return True
+        except Exception: pass
 
-    # 2. Notificações para Moradores (e Admins que também sejam condóminos)
+    # Alertas Admin
+    if perfil == "Admin":
+        if sessao_db.query(Ocorrencia).filter_by(resolvida=False).count() > 0: return True
+        if sessao_db.query(Manutencao).filter_by(estado="Pendente").count() > 0: return True
+
+    # Alertas Condómino
     if condomino_id:
-        # Tem quotas em dívida?
-        dividas = sessao_db.query(Quota).filter_by(condomino_id=condomino_id, paga=False).count()
-        if dividas > 0:
-            return True
+        if sessao_db.query(Quota).filter_by(condomino_id=condomino_id, paga=False).count() > 0: return True
             
-        # Existem sondagens ativas nas quais ainda não votou?
-        sondagens_ativas = sessao_db.query(Sondagem).filter_by(ativa=True).all()
-        for sond in sondagens_ativas:
-            ja_votou = sessao_db.query(VotoSondagem).filter_by(sondagem_id=sond.id, condomino_id=condomino_id).first()
-            if not ja_votou:
+        sondagens = sessao_db.query(Sondagem).filter_by(ativa=True).all()
+        for s in sondagens:
+            if not sessao_db.query(VotoSondagem).filter_by(sondagem_id=s.id, condomino_id=condomino_id).first():
                 return True
 
     return False
@@ -559,14 +555,12 @@ def configurar_sidebar():
         tem_alertas = verificar_notificacoes_pendentes(session, st.session_state.perfil, st.session_state.condomino_id)
         
         if tem_alertas:
-            # Html com a classe CSS de animação
             html_lampada = '<span class="notificacao-ativa">💡</span>'
             st.sidebar.markdown(f"{html_lampada} **Tens notificações pendentes!**", unsafe_allow_html=True)
-            # Um botão rápido para ver os detalhes
+            
+            # Quando clicado, usa st.switch_page com o nome exato que vamos dar à página no menu!
             if st.sidebar.button("Ir para Central de Notificações", use_container_width=True, type="primary"):
-                # Para simplificar, direcionamos para o Dashboard onde já mostras os avisos
-                # Se quiseres, podes criar uma função pagina_notificacoes() inteiramente nova
-                st.session_state.toast = ("Redirecionado para os alertas principais.", "ℹ️")
+                st.switch_page("Central de Notificações") 
         else:
             st.sidebar.markdown("🔕 *Sem notificações novas.*")
         # === FIM DA CENTRAL DE NOTIFICAÇÕES ===
@@ -2000,7 +1994,71 @@ def pagina_mural():
                             session.delete(a); session.commit(); st.rerun()
     else: st.info("O mural está silencioso. Seja o primeiro a publicar algo!")
 
-# --- HELPER FUNCTIONS PARA DUMP COMPLETO JSON ---
+def pagina_notificacoes():
+    from datetime import datetime
+    mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
+    st.header(":material/notifications_active: Central de Notificações")
+    st.write("Acompanhe aqui as suas pendências e os alertas importantes da comunidade. Os alertas desaparecem automaticamente assim que a ação correspondente for concluída.")
+    
+    alertas_encontrados = False
+    
+    # ---------------------------------------------------------
+    # ALERTAS PARA ADMINISTRADORES
+    # ---------------------------------------------------------
+    if st.session_state.perfil == "Admin":
+        st.subheader("🛠️ Alertas de Operações (Administração)")
+        
+        # 1. Ocorrências Pendentes
+        ocs = session.query(Ocorrencia).filter_by(resolvida=False).all()
+        for o in ocs:
+            alertas_encontrados = True
+            st.error(f"**Ocorrência Pendente:** '{o.titulo}' reportada por {o.criado_por} em {o.data_criacao}.\n\n*Ação: Vá ao menu 'Ocorrências' para resolver.*", icon="🚨")
+            
+        # 2. Manutenções Preventivas Atrasadas/Pendentes
+        mans = session.query(Manutencao).filter_by(estado="Pendente").all()
+        for m in mans:
+            alertas_encontrados = True
+            st.warning(f"**Manutenção Programada:** '{m.descricao}' em {m.equipamento} agendada para {m.data_planeada}.\n\n*Ação: Vá ao menu 'Ocorrências > Manutenção' para concluir.*", icon="⚙️")
+
+    # ---------------------------------------------------------
+    # ALERTAS GERAIS E PARA MORADORES
+    # ---------------------------------------------------------
+    st.subheader("👤 Os Meus Alertas Pessoais e da Comunidade")
+    
+    # 3. Assembleias Próximas (Para todos)
+    ass_futuras = session.query(Assembleia).filter_by(realizada=False).all()
+    for a in ass_futuras:
+        try:
+            d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
+            dias_restantes = (d_ass - hoje).days
+            if 0 <= dias_restantes <= 5: # Avisa se faltarem 5 dias ou menos
+                alertas_encontrados = True
+                st.info(f"**Assembleia à porta!** A reunião '{a.titulo}' realiza-se em {dias_restantes} dia(s) ({a.data_agendada}).", icon="📅")
+            elif dias_restantes < 0:
+                alertas_encontrados = True
+                st.error(f"**Assembleia Atrasada:** A reunião '{a.titulo}' estava agendada para {a.data_agendada} e ainda não foi marcada como realizada.", icon="⚠️")
+        except Exception: pass
+
+    if st.session_state.condomino_id:
+        # 4. Quotas em Dívida
+        dividas = session.query(Quota).filter_by(condomino_id=st.session_state.condomino_id, paga=False).all()
+        if dividas:
+            alertas_encontrados = True
+            total_divida = sum([d.valor for d in dividas])
+            st.error(f"**Tesouraria:** Tem {len(dividas)} quota(s) em atraso no valor total de {total_divida:.2f} €.\n\n*Ação: Vá ao 'Dashboard' para ver o IBAN de pagamento.*", icon="💰")
+            
+        # 5. Votações Pendentes
+        sond_ativas = session.query(Sondagem).filter_by(ativa=True).all()
+        for s in sond_ativas:
+            ja_votou = session.query(VotoSondagem).filter_by(sondagem_id=s.id, condomino_id=st.session_state.condomino_id).first()
+            if not ja_votou:
+                alertas_encontrados = True
+                st.info(f"**Votação Pendente:** Existe uma votação ativa sobre '{s.pergunta}'. A sua opinião é importante!\n\n*Ação: Vá ao menu 'Assembleias & Votações' para votar.*", icon="🗳️")
+
+    if not alertas_encontrados:
+        st.success("🎉 Excelente! Não tem nenhuma notificação pendente neste momento. Está tudo em dia!")
+
+
 def gerar_snapshot_json():
     db_dump = {}
     models_to_export = {
@@ -2258,6 +2316,7 @@ else:
         pg = st.navigation({
             "VISÃO GERAL": [
                 st.Page(pagina_dashboard, title="Dashboard", icon=":material/dashboard:", default=True), 
+                st.Page(pagina_notificacoes, title="Central de Notificações", icon=":material/notifications_active:"), # ADICIONADO AQUI
                 st.Page(pagina_condominos, title="Condóminos", icon=":material/group:")
             ],
             "TESOURARIA": [
@@ -2280,7 +2339,8 @@ else:
     else: 
         nav_morador = {
             "A MINHA CONTA": [
-                st.Page(pagina_dashboard_morador, title="Conta Corrente", icon=":material/home:", default=True)
+                st.Page(pagina_dashboard_morador, title="Conta Corrente", icon=":material/home:", default=True),
+                st.Page(pagina_notificacoes, title="Central de Notificações", icon=":material/notifications_active:") # ADICIONADO AQUI
             ]
         }
         
