@@ -9,12 +9,12 @@ import unicodedata
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy import func, and_
 from io import BytesIO
 
 # Importações limpas e completas dos nossos módulos refatorados
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, Auditoria, Manutencao
 from db import init_db, get_session, engine
 
 # ==========================================
@@ -116,6 +116,15 @@ def formatar_username(nome_completo):
 init_db()
 session = get_session()
 
+# ==========================================
+# MOTOR CENTRAL DE REGISTO DE AUDITORIA (LOGS)
+# ==========================================
+def registar_log(sessao_db, acao, detalhes=""):
+    """Grava as ações executadas pelos utilizadores na BD de Auditoria."""
+    user = st.session_state.get("username", "Sistema")
+    novo_log = Auditoria(username=user, acao=acao, detalhes=detalhes)
+    sessao_db.add(novo_log)
+
 st.set_page_config(page_title="A3® Portal do Condomínio", page_icon="🏢", layout="wide")
 
 caminho_logo = "logo.png"
@@ -137,6 +146,7 @@ if WERKZEUG_INSTALLED:
             perm_mural=True
         )
         session.add(admin_user)
+        registar_log(session, "SISTEMA", "Criação automática do utilizador administrador padrão.")
         session.commit()
 
 if "logado" not in st.session_state: st.session_state.logado = False
@@ -579,13 +589,16 @@ def pagina_login():
                             
                             st.session_state.modo_leitura = utilizador_db.modo_leitura
                             st.session_state.perm_download_docs = utilizador_db.perm_download_docs
+                            
+                            registar_log(session, "LOGIN", f"Utilizador {utilizador_db.username} entrou no sistema.")
+                            session.commit()
                             st.rerun()
                         else: 
                             st.error("❌ Credenciais incorretas. Tente novamente.")
                             
             st.markdown("""
             <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.0</p>
+                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.1</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -612,6 +625,7 @@ def pagina_dashboard_morador():
                 else:
                     utilizador_ativo = session.get(Utilizador, st.session_state.user_id)
                     utilizador_ativo.password_hash = generate_password_hash(nova_pwd)
+                    registar_log(session, "ALTERAR_PASSWORD", f"O utilizador alterou a sua própria credencial de acesso.")
                     session.commit()
                     st.session_state.toast = ("Password atualizada com sucesso!", "✅")
                     st.session_state.form_key += 1
@@ -671,12 +685,15 @@ def pagina_acessos():
                                 modo_leitura=False, perm_download_docs=True
                             )
                             try:
-                                session.add(novo_user); session.commit()
+                                session.add(novo_user)
+                                registar_log(session, "CRIAR_UTILIZADOR", f"Acesso criado para fração {cond_sel.fracao} (User: {username_sugerido}).")
+                                session.commit()
                                 sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user.username} | Pass: mudar123"
                             except Exception:
                                 session.rollback()
+                                alt_username = f"{username_sugerido}_{cond_sel.fracao.replace(' ', '').lower()}"
                                 novo_user_alt = Utilizador(
-                                    username=f"{username_sugerido}_{cond_sel.fracao.replace(' ', '').lower()}", 
+                                    username=alt_username, 
                                     password_hash=generate_password_hash("mudar123"), perfil="Morador", condomino_id=id_cond,
                                     perm_dashboard=True, perm_condominos=False, 
                                     perm_quotas=True, perm_financas=False, perm_recibos=True,
@@ -685,7 +702,9 @@ def pagina_acessos():
                                     modo_leitura=False, perm_download_docs=True
                                 )
                                 try:
-                                    session.add(novo_user_alt); session.commit()
+                                    session.add(novo_user_alt)
+                                    registar_log(session, "CRIAR_UTILIZADOR", f"Acesso alternativo criado para fração {cond_sel.fracao} (User: {alt_username}).")
+                                    session.commit()
                                     sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user_alt.username} | Pass: mudar123"
                                 except Exception as e2: 
                                     session.rollback()
@@ -693,8 +712,18 @@ def pagina_acessos():
                             if sucesso: st.session_state.toast = (msg_toast, "✅"); st.rerun()
                     else:
                         c1, c2 = st.columns(2)
-                        if c1.button("Repor Password para 'mudar123'", width="stretch"): user_existente.password_hash = generate_password_hash("mudar123"); session.commit(); st.session_state.toast = ("Reposta!", "✅"); st.rerun()
-                        if c2.button("Remover Acesso", width="stretch"): session.delete(user_existente); session.commit(); st.session_state.toast = ("Removido.", "🗑️"); st.rerun()
+                        if c1.button("Repor Password para 'mudar123'", width="stretch"): 
+                            user_existente.password_hash = generate_password_hash("mudar123")
+                            registar_log(session, "REPOR_PASSWORD", f"Password do utilizador {user_existente.username} redefinida para o padrão.")
+                            session.commit()
+                            st.session_state.toast = ("Reposta!", "✅")
+                            st.rerun()
+                        if c2.button("Remover Acesso", width="stretch"): 
+                            registar_log(session, "REMOVER_ACESSO", f"Removido por completo o utilizador {user_existente.username}.")
+                            session.delete(user_existente)
+                            session.commit()
+                            st.session_state.toast = ("Removido.", "🗑️")
+                            st.rerun()
         else: st.info("Ainda não tem condóminos.")
 
     with tab_perms:
@@ -741,6 +770,8 @@ def pagina_acessos():
                             u_sel.perm_quotas, u_sel.perm_financas, u_sel.perm_recibos = val_quotas, val_fin, val_rec
                             u_sel.perm_mural, u_sel.perm_assembleias = val_mur, val_ass
                             u_sel.perm_arquivo, u_sel.perm_fornecedores, u_sel.perm_ocorrencias = val_arq, val_forn, val_oco
+                            
+                            registar_log(session, "ALTERAR_PERMISSOES", f"Permissões do utilizador {u_sel.username} foram modificadas.")
                             session.commit()
                             st.session_state.toast = ("Permissões atualizadas com sucesso!", "✅")
                             st.session_state.form_key += 1
@@ -749,7 +780,6 @@ def pagina_acessos():
 
 def pagina_dashboard():
     import plotly.graph_objects as go
-    from datetime import datetime
     
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
@@ -992,6 +1022,7 @@ def pagina_condominos():
                                     session.add(novo_c)
                                     novos += 1
                         if novos > 0:
+                            registar_log(session, "IMPORTAR_CONDOMINOS", f"Importação em lote bem sucedida de {novos} novos condóminos.")
                             session.commit()
                             st.success(f"{novos} frações importadas com sucesso!")
                             st.session_state.form_key += 1
@@ -1028,9 +1059,11 @@ def pagina_condominos():
                 if c1.form_submit_button("Guardar"):
                     if st.session_state.edit_type == "cond":
                         obj.nome, obj.fracao, obj.nif, obj.telefone, obj.email, obj.permilagem = n, f, nif_input, t, e, p
-                        st.session_state.toast = ("Condómino atualizado!", "✏️")
+                        registar_log(session, "EDITAR_CONDOMINO", f"Dados da fração {f} modificados manualmente.")
+                        st.session_state.toast = ("Condómino updated!", "✏️")
                     else:
                         session.add(Condomino(nome=n, fracao=f, nif=nif_input, telefone=t, email=e, permilagem=p))
+                        registar_log(session, "CRIAR_CONDOMINO", f"Criação manual da nova fração: {f}.")
                         st.session_state.toast = ("Condómino adicionado!", "✅")
                     session.commit(); clear_edit(); st.rerun()
                 if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
@@ -1051,6 +1084,7 @@ def pagina_condominos():
                     if c_edit.button(":material/edit: Editar Fração", width="stretch"):
                         st.session_state.edit_id = id_sel; st.session_state.edit_type = "cond"; st.session_state.form_key += 1; st.rerun()
                     if c_del.button(":material/delete: Apagar Registo", width="stretch"):
+                        registar_log(session, "APAGAR_CONDOMINO", f"Eliminação permanente do condomíno da fração {cond_obj.fracao}.")
                         session.delete(cond_obj); session.commit(); st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
     else: st.info("Ainda não existem condóminos registados.")
 
@@ -1092,6 +1126,7 @@ def pagina_quotas():
                     if st.button(f":material/bolt: Gerar Quotas Apenas de {mes_str}", width="stretch"):
                         if len(condominos_sem_quota) > 0:
                             for c in condominos_sem_quota: session.add(Quota(condomino_id=c.id, mes_ano=mes_str, valor=valor_quota_padrao, paga=False))
+                            registar_log(session, "GERAR_QUOTAS_MES", f"Processamento manual e lançamento das quotas do mês {mes_str}.")
                             session.commit(); st.session_state.toast = (f"Quotas de {mes_str} geradas!", "✅"); st.rerun()
                         else: st.info("Não há quotas em falta.")
                 with col2:
@@ -1103,7 +1138,9 @@ def pagina_quotas():
                                 if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=m_str).first():
                                     session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
                                     novas_quotas += 1
-                        if novas_quotas > 0: session.commit(); st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
+                        if novas_quotas > 0: 
+                            registar_log(session, "GERAR_QUOTAS_ANO", f"Lançamento em massa de {novas_quotas} quotas para o ano civil {ano_sel}.")
+                            session.commit(); st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
                         else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
                         st.rerun()
     else:
@@ -1126,7 +1163,10 @@ def pagina_quotas():
                             corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},\n\nVerificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
                             if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email):
                                 emails_enviados += 1
-                    if emails_enviados > 0: st.success(f"{emails_enviados} avisos enviados com sucesso!")
+                    if emails_enviados > 0: 
+                        registar_log(session, "AVISO_QUOTAS_LOTE", f"Disparados {emails_enviados} emails automáticos de cobrança em lote.")
+                        session.commit()
+                        st.success(f"{emails_enviados} avisos enviados com sucesso!")
                     else: st.warning("Nenhum aviso enviado. Verifique se os condóminos devedores têm email registado.")
 
         if dividas:
@@ -1141,14 +1181,19 @@ def pagina_quotas():
                     col_pagar, col_aviso = st.columns(2)
                     if not st.session_state.modo_leitura:
                         if col_pagar.button(":material/done: Marcar como Paga", width="stretch"):
-                            quota_obj.paga = True; quota_obj.data_pagamento = hoje.strftime("%Y-%m-%d"); session.commit(); st.rerun()
+                            quota_obj.paga = True; quota_obj.data_pagamento = hoje.strftime("%Y-%m-%d")
+                            registar_log(session, "PAGAR_QUOTA", f"Liquidada quota de {quota_obj.mes_ano} para fração {quota_obj.condomino.fracao}.")
+                            session.commit(); st.rerun()
                         if st.session_state.perfil == "Admin":
                             with col_aviso.popover(":material/mail: Enviar Aviso Individual"):
                                 corpo_email = f"Exmo(a) Sr(a) {quota_obj.condomino.nome},\n\nEncontra-se a pagamento a quota de {quota_obj.mes_ano} no valor de {quota_obj.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
                                 st.markdown(f"**Mensagem:**\n\n{corpo_email}")
                                 if st.button("Confirmar Envio", key=f"mail_aviso_{quota_obj.id}", width="stretch"):
                                     if quota_obj.condomino.email:
-                                        if enviar_email_real(quota_obj.condomino.email, f"Aviso de Pagamento - {quota_obj.mes_ano}", corpo_email): st.toast("Enviado!", icon="✅")
+                                        if enviar_email_real(quota_obj.condomino.email, f"Aviso de Pagamento - {quota_obj.mes_ano}", corpo_email): 
+                                            registar_log(session, "AVISO_QUOTA_INDIVIDUAL", f"Notificação de dívida enviada para fração {quota_obj.condomino.fracao} ({quota_obj.mes_ano}).")
+                                            session.commit()
+                                            st.toast("Enviado!", icon="✅")
                                     else: st.error("Sem email registado.")
         else: st.success("🎉 Não existem quotas em dívida.")
 
@@ -1172,8 +1217,12 @@ def pagina_financas():
                 with st.form("f_orc"):
                     v_orc = st.number_input(f"Valor do Orçamento Aprovado (€)", value=orc.valor_anual if orc else 0.0, step=100.0, key=f"o_v_{st.session_state.form_key}")
                     if st.form_submit_button("Guardar Orçamento"):
-                        if orc: orc.valor_anual = v_orc
-                        else: session.add(Orcamento(ano=ano_sel, valor_anual=v_orc))
+                        if orc: 
+                            orc.valor_anual = v_orc
+                            registar_log(session, "DEFINIR_ORCAMENTO", f"Orçamento do ano {ano_sel} atualizado para {v_orc} €.")
+                        else: 
+                            session.add(Orcamento(ano=ano_sel, valor_anual=v_orc))
+                            registar_log(session, "DEFINIR_ORCAMENTO", f"Novo orçamento fixado para {ano_sel} no valor de {v_orc} €.")
                         session.commit(); st.session_state.form_key += 1; st.rerun()
 
         orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
@@ -1200,6 +1249,7 @@ def pagina_financas():
                             elif v <= 0.0: st.error("⚠️ O valor do lançamento tem de ser superior a 0,00 €!")
                             else:
                                 session.add(Movimento(tipo=t, descricao=d, valor=v, data=dt.strftime("%Y-%m-%d")))
+                                registar_log(session, f"LANÇAR_{t.upper()}", f"Lançamento manual de {t}: {d} ({v} €).")
                                 session.commit(); st.session_state.toast = ("Lançamento registado com sucesso!", "✅")
                                 st.session_state.form_key += 1; st.rerun()
 
@@ -1233,6 +1283,7 @@ def pagina_financas():
                                         novos_movs += 1
                                         
                                 if novos_movs > 0:
+                                    registar_log(session, "IMPORTAR_EXTRATO", f"Importados {novos_movs} lançamentos contabilísticos via ficheiro de extrato.")
                                     session.commit()
                                     st.success(f"{novos_movs} movimentos importados com sucesso!")
                                     st.session_state.form_key += 1
@@ -1273,7 +1324,9 @@ def pagina_financas():
                 if id_mov != "-": 
                     with st.container(border=True):
                         mov_obj = session.get(Movimento, int(id_mov))
-                        if st.button(f":material/delete: Apagar {mov_obj.descricao}", width="stretch"): session.delete(mov_obj); session.commit(); st.rerun()
+                        if st.button(f":material/delete: Apagar {mov_obj.descricao}", width="stretch"): 
+                            registar_log(session, "APAGAR_MOVIMENTO", f"Removido lançamento financeiro: {mov_obj.descricao} ({mov_obj.valor} €).")
+                            session.delete(mov_obj); session.commit(); st.rerun()
 
     with tab_ano:
         st.subheader(f"Resumo Financeiro Global - {ano_sel}")
@@ -1307,7 +1360,7 @@ def pagina_financas():
         col_pdf, col_mail = st.columns(2)
         
         if REPORTLAB_INSTALLED:
-            pdf_bytes_anual = gerar_pdf_relatorio_anual(ano_sel, saldo_anterior_ano, q_atual_ano, rec_atual_ano, desp_atual_ano, df_desp_agrupadas)
+            pdf_bytes_anual = gerar_pdf_relacional_anual = gerar_pdf_relatorio_anual(ano_sel, saldo_anterior_ano, q_atual_ano, rec_atual_ano, desp_atual_ano, df_desp_agrupadas)
             with col_pdf:
                 st.download_button("📥 Descarregar Relatório de Contas (PDF)", data=pdf_bytes_anual, file_name=f"Relatorio_Contas_{ano_sel}.pdf", mime="application/pdf", width="stretch")
             
@@ -1320,7 +1373,10 @@ def pagina_financas():
                             corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.\n\nCumprimentos,\nA Administração."
                             if enviar_email_real(c.email, f"Relatório de Contas Anual - {ano_sel}", corpo_email, anexo_bytes=pdf_bytes_anual, nome_anexo=f"Relatorio_Contas_{ano_sel}.pdf"):
                                 emails_enviados += 1
-                        if emails_enviados > 0: st.success(f"Relatório enviado a {emails_enviados} condóminos com sucesso!")
+                        if emails_enviados > 0: 
+                            registar_log(session, "ENVIAR_RELATORIO_ANUAL", f"Relatório anual {ano_sel} transmitido via email para {emails_enviados} destinatários.")
+                            session.commit()
+                            st.success(f"Relatório enviado a {emails_enviados} condóminos com sucesso!")
                         else: st.warning("Não existem condóminos com email registado.")
         
         with st.container(border=True):
@@ -1406,13 +1462,19 @@ def pagina_recibos():
                             if st.button(":material/send: Enviar Confirmação Simples", width="stretch"):
                                 if q.condomino.email:
                                     corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
-                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
+                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): 
+                                        registar_log(session, "ENVIAR_CONFIRMACAO_RECIBO", f"Enviada confirmação simples de liquidação para a fração {q.condomino.fracao}.")
+                                        session.commit()
+                                        st.toast("Enviado!", icon="✅")
                                 else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
                                 if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
                                     if q.condomino.email:
                                         corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo oficial em PDF.\nA Administração."
-                                        if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado!", icon="🎉")
+                                        if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): 
+                                            registar_log(session, "ENVIAR_RECIBO_PDF", f"Recibo oficial digital em PDF enviado para a fração {q.condomino.fracao}.")
+                                            session.commit()
+                                            st.toast("Enviado!", icon="🎉")
                                     else: st.error("Condómino sem email.")
 
 def pagina_documentos():
@@ -1431,7 +1493,8 @@ def pagina_documentos():
                     caminho = os.path.join("uploads", ficheiro.name)
                     with open(caminho, "wb") as f: f.write(ficheiro.getbuffer())
                     
-                    session.add(Documento(nome_ficheiro=ficheiro.name, categoria=categoria, caminho=caminho, carregado_por=st.session_state.username))
+                    session.add(Documento(nome_ficheiro=ficheiro.name, category=categoria, caminho=caminho, carregado_por=st.session_state.username, categoria=categoria))
+                    registar_log(session, "ARQUIVAR_DOCUMENTO", f"Documento '{ficheiro.name}' arquivado na categoria '{categoria}'.")
                     session.commit(); st.session_state.form_key += 1; st.rerun()
 
     docs = session.query(Documento).order_by(Documento.id.desc()).all()
@@ -1460,6 +1523,7 @@ def pagina_documentos():
                     if pode_apagar:
                         if col_del.button("🗑️ Apagar", width="stretch"):
                             if os.path.exists(doc_obj.caminho): os.remove(doc_obj.caminho) 
+                            registar_log(session, "APAGAR_DOCUMENTO", f"Documento físico e registo '{doc_obj.nome_ficheiro}' removidos permanentemente.")
                             session.delete(doc_obj); session.commit(); st.rerun()
     else: st.info("O arquivo está vazio.")
 
@@ -1496,9 +1560,11 @@ def pagina_fornecedores():
                         if st.session_state.edit_type == "forn":
                             obj.nome, obj.categoria, obj.telefone, obj.email, obj.nif, obj.observacoes = n, cat, t, e, nif_input, obs
                             obj.responsavel, obj.iban = resp, iban_input
-                            st.session_state.toast = ("Fornecedor atualizado!", "✏️")
+                            registar_log(session, "EDITAR_FORNECEDOR", f"Modificação da ficha de fornecedor corporativo: {n}.")
+                            st.session_state.toast = ("Fornecedor updated!", "✏️")
                         else:
                             session.add(Fornecedor(nome=n, categoria=cat, telefone=t, email=e, nif=nif_input, observacoes=obs, responsavel=resp, iban=iban_input))
+                            registar_log(session, "CRIAR_FORNECEDOR", f"Inclusão de ficha de novo prestador de serviços externos: {n}.")
                             st.session_state.toast = ("Fornecedor adicionado!", "✅")
                         session.commit(); clear_edit(); st.rerun()
                 if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
@@ -1528,71 +1594,159 @@ def pagina_fornecedores():
                     if c_edit.button(":material/edit: Editar", width="stretch"):
                         st.session_state.edit_id = id_sel; st.session_state.edit_type = "forn"; st.session_state.form_key += 1; st.rerun()
                     if c_del.button(":material/delete: Apagar", width="stretch"):
+                        registar_log(session, "APAGAR_FORNECEDOR", f"Remoção completa do registo do fornecedor {forn_obj.nome}.")
                         session.delete(forn_obj); session.commit(); st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
     else: st.info("Ainda não existem fornecedores registados.")
 
 def pagina_ocorrencias():
     import time
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    st.header(":material/build: Gestão de Ocorrências")
+    st.header(":material/build: Gestão de Ocorrências e Manutenção")
     
-    if not st.session_state.modo_leitura:
-        with st.expander(":material/add_alert: Registar Nova Ocorrência"):
-            with st.form("f_oc"):
-                st.text_input("Reportado por", value=st.session_state.username, disabled=True)
-                tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
-                desc = st.text_area("Descrição detalhada do problem *", key=f"o_desc_{st.session_state.form_key}")
-                
-                st.write("**Provas Fotográficas (Opcional)**")
-                c1, c2 = st.columns(2)
-                with c1: foto1 = st.file_uploader("Fotografia 1", type=["jpg", "jpeg", "png"], key=f"o_f1_{st.session_state.form_key}")
-                with c2: foto2 = st.file_uploader("Fotografia 2", type=["jpg", "jpeg", "png"], key=f"o_f2_{st.session_state.form_key}")
-                
-                if st.form_submit_button("Reportar Ocorrência"):
-                    if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
-                    else:
-                        if not os.path.exists("uploads"): os.makedirs("uploads")
-                        caminho_f1, caminho_f2 = None, None
-                        timestamp_str = str(int(time.time()))
-                        
-                        if foto1:
-                            caminho_f1 = os.path.join("uploads", f"oc_{timestamp_str}_1_{foto1.name}")
-                            with open(caminho_f1, "wb") as f: f.write(foto1.getbuffer())
-                        if foto2:
-                            caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
-                            with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
+    tab_avarias, tab_preventiva = st.tabs(["🚨 Avarias & Ocorrências", "⚙️ Manutenção Preventiva"])
+    
+    with tab_avarias:
+        if not st.session_state.modo_leitura:
+            with st.expander(":material/add_alert: Registar Nova Ocorrência"):
+                with st.form("f_oc"):
+                    st.text_input("Reportado por", value=st.session_state.username, disabled=True)
+                    tit = st.text_input("Assunto (ex: Fuga de água) *", key=f"o_tit_{st.session_state.form_key}")
+                    desc = st.text_area("Descrição detalhada do problem *", key=f"o_desc_{st.session_state.form_key}")
+                    
+                    st.write("**Provas Fotográficas (Opcional)**")
+                    c1, c2 = st.columns(2)
+                    with c1: foto1 = st.file_uploader("Fotografia 1", type=["jpg", "jpeg", "png"], key=f"o_f1_{st.session_state.form_key}")
+                    with c2: foto2 = st.file_uploader("Fotografia 2", type=["jpg", "jpeg", "png"], key=f"o_f2_{st.session_state.form_key}")
+                    
+                    if st.form_submit_button("Reportar Ocorrência"):
+                        if not tit.strip() or not desc.strip(): st.error("⚠️ O preenchimento do Assunto e da Descrição é obrigatório!")
+                        else:
+                            if not os.path.exists("uploads"): os.makedirs("uploads")
+                            caminho_f1, caminho_f2 = None, None
+                            timestamp_str = str(int(time.time()))
+                            
+                            if foto1:
+                                caminho_f1 = os.path.join("uploads", f"oc_{timestamp_str}_1_{foto1.name}")
+                                with open(caminho_f1, "wb") as f: f.write(foto1.getbuffer())
+                            if foto2:
+                                caminho_f2 = os.path.join("uploads", f"oc_{timestamp_str}_2_{foto2.name}")
+                                with open(caminho_f2, "wb") as f: f.write(foto2.getbuffer())
 
-                        session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"), criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2))
-                        session.commit(); st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
-                        st.session_state.form_key += 1; st.rerun()
+                            session.add(Ocorrencia(titulo=tit, descricao=desc, data_criacao=hoje.strftime("%Y-%m-%d"), criado_por=st.session_state.username, foto1=caminho_f1, foto2=caminho_f2))
+                            registar_log(session, "REPORTAR_OCORRENCIA", f"Avaria reportada no portal: '{tit}'.")
+                            session.commit(); st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
 
-    ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
-    if ocs:
-        with st.container(border=True):
-            df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
-            evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
-        
-        if evento_oc.selection.rows:
-            st.markdown("<br>", unsafe_allow_html=True)
+        ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
+        if ocs:
             with st.container(border=True):
-                oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
-                col_info, col_estado, col_del = st.columns([2, 1, 1])
-                
-                col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
-                col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
-                
-                if oc_obj.foto1 or oc_obj.foto2:
-                    st.write("**Fotografias Anexadas:**")
-                    c_img1, c_img2 = st.columns(2)
-                    if oc_obj.foto1 and os.path.exists(oc_obj.foto1): c_img1.image(oc_obj.foto1, use_container_width=True)
-                    if oc_obj.foto2 and os.path.exists(oc_obj.foto2): c_img2.image(oc_obj.foto2, use_container_width=True)
+                df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
+                evento_oc = st.dataframe(df_ocs, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            
+            if evento_oc.selection.rows:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    oc_obj = session.get(Ocorrencia, int(df_ocs.iloc[evento_oc.selection.rows[0]]["ID"]))
+                    col_info, col_estado, col_del = st.columns([2, 1, 1])
+                    
+                    col_info.info(f":material/push_pin: Submetido por: **{oc_obj.criado_por}** | Assunto: **{oc_obj.titulo}**")
+                    col_info.write(f"**Descrição:** {oc_obj.descricao if oc_obj.descricao else 'Sem descrição'}")
+                    
+                    if oc_obj.foto1 or oc_obj.foto2:
+                        st.write("**Fotografias Anexadas:**")
+                        c_img1, c_img2 = st.columns(2)
+                        if oc_obj.foto1 and os.path.exists(oc_obj.foto1): c_img1.image(oc_obj.foto1, use_container_width=True)
+                        if oc_obj.foto2 and os.path.exists(oc_obj.foto2): c_img2.image(oc_obj.foto2, use_container_width=True)
 
-                if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
-                    if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", width="stretch"):
-                        oc_obj.resolvida = not oc_obj.resolvida; session.commit(); st.rerun()
-                    if col_del.button(":material/delete: Apagar", width="stretch"):
-                        session.delete(oc_obj); session.commit(); st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
-    else: st.info("Nenhuma ocorrência neste período.")
+                    if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
+                        if col_estado.button(":material/lock_open: Reabrir" if oc_obj.resolvida else ":material/check_circle: Resolver", key=f"btn_res_{oc_obj.id}", width="stretch"):
+                            oc_obj.resolvida = not oc_obj.resolvida
+                            log_act = "REABRIR_OCORRENCIA" if not oc_obj.resolvida else "RESOLVER_OCORRENCIA"
+                            registar_log(session, log_act, f"Alterado estado técnico do sinistro/ocorrência ID {oc_obj.id}.")
+                            session.commit(); st.rerun()
+                        if col_del.button(":material/delete: Apagar", key=f"btn_del_oc_{oc_obj.id}", width="stretch"):
+                            registar_log(session, "APAGAR_OCORRENCIA", f"Registo e ficha de ocorrência ID {oc_obj.id} eliminados.")
+                            session.delete(oc_obj); session.commit(); st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
+        else: st.info("Nenhuma ocorrência neste período.")
+
+    with tab_preventiva:
+        st.write("### ⚙️ Plano de Inspeções e Vistorias Periódicas Obligatórias")
+        
+        if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+            with st.expander(":material/add_task: Planear Nova Intervenção Preventiva", expanded=False):
+                with st.form("f_manutencao"):
+                    equip = st.text_input("Equipamento / Infraestrutura Geral *", placeholder="Ex: Elevador Principal, Grupo de Bombas, Central de Incêndios", key=f"m_eq_{st.session_state.form_key}")
+                    desc_m = st.text_input("Especificação Técnica do Serviço *", placeholder="Ex: Manutenção Mensal Contratual, Inspeção de Segurança Externa", key=f"m_ds_{st.session_state.form_key}")
+                    
+                    c1, c2 = st.columns(2)
+                    data_plan = c1.date_input("Data de Agendamento Técnico", value=hoje, key=f"m_dtp_{st.session_state.form_key}")
+                    per = c2.selectbox("Intervalo de Recorrência", ["Única", "Mensal", "Trimestral", "Semestral", "Anual"], index=4, key=f"m_per_{st.session_state.form_key}")
+                    
+                    fornecedores = session.query(Fornecedor).all()
+                    opcoes_forn = {"Nenhum / Administração Interna": None}
+                    for f in fornecedores: opcoes_forn[f.nome] = f.id
+                    forn_sel = st.selectbox("Empresa Técnica Alocada", list(opcoes_forn.keys()), key=f"m_fr_{st.session_state.form_key}")
+                    
+                    obs_m = st.text_area("Notas / Observações de Campo", key=f"m_ob_{st.session_state.form_key}")
+                    
+                    if st.form_submit_button("Agendar Intervenção"):
+                        if not equip.strip() or not desc_m.strip():
+                            st.error("⚠️ Os campos de Equipamento e Especificação Técnica são de preenchimento obrigatório!")
+                        else:
+                            nova_man = Manutencao(
+                                equipamento=equip, descricao=desc_m,
+                                data_planeada=data_plan.strftime("%Y-%m-%d"),
+                                periodicidade=per, fornecedor_id=opcoes_forn[forn_sel],
+                                estado="Pendente", observacoes=obs_m
+                            )
+                            session.add(nova_man)
+                            registar_log(session, "AGENDAR_MANUTENCAO", f"Agendada vistoria preventiva para '{equip}' para o dia {data_plan}.")
+                            session.commit()
+                            st.session_state.toast = ("Manutenção agendada com sucesso!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
+
+        manutencoes = session.query(Manutencao).order_by(Manutencao.data_planeada).all()
+        if manutencoes:
+            with st.container(border=True):
+                df_man = pd.DataFrame([{
+                    "ID": m.id,
+                    "Data Planeada": m.data_planeada,
+                    "Infraestrutura": m.equipamento,
+                    "Procedimento Técnico": m.descricao,
+                    "Frequência": m.periodicidade,
+                    "Estado": "✅ Concluída" if m.estado == "Concluído" else "⏳ Pendente",
+                    "Técnico/Fornecedor": session.get(Fornecedor, m.fornecedor_id).nome if m.fornecedor_id else "Administração"
+                } for m in manutencoes])
+                evento_man = st.dataframe(df_man, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            
+            if evento_man.selection.rows:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    id_man_sel = int(df_man.iloc[evento_man.selection.rows[0]]["ID"])
+                    m_obj = session.get(Manutencao, id_man_sel)
+                    
+                    col_m_info, col_m_act, col_m_del = st.columns([2, 1, 1])
+                    forn_txt = session.get(Fornecedor, m_obj.fornecedor_id).nome if m_obj.fornecedor_id else "Administração Interna"
+                    col_m_info.info(f"**Ficha Técnica:** {m_obj.descricao} em **{m_obj.equipamento}**")
+                    col_m_info.write(f"**Operador Técnico:** {forn_txt} | **Recorrência:** {m_obj.periodicidade} | **Notas:** {m_obj.observacoes if m_obj.observacoes else '-'}")
+                    
+                    if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
+                        if m_obj.estado != "Concluído":
+                            if col_m_act.button("✅ Fechar Serviço", key=f"btn_done_m_{m_obj.id}", width="stretch"):
+                                m_obj.estado = "Concluído"
+                                registar_log(session, "CONCLUIR_MANUTENCAO", f"Terminado o serviço preventivo agendado em {m_obj.equipamento}.")
+                                session.commit(); st.rerun()
+                        else:
+                            if col_m_act.button("⏳ Reabrir Ordem", key=f"btn_reopen_m_{m_obj.id}", width="stretch"):
+                                m_obj.estado = "Pendente"
+                                registar_log(session, "REABRIR_MANUTENCAO", f"Reabertura da ordem de vistoria técnica em {m_obj.equipamento}.")
+                                session.commit(); st.rerun()
+                                
+                        if col_m_del.button("🗑️ Cancelar Plano", key=f"btn_del_m_{m_obj.id}", width="stretch"):
+                            registar_log(session, "APAGAR_MANUTENCAO", f"Cancelamento permanente da ordem periódica de {m_obj.equipamento}.")
+                            session.delete(m_obj); session.commit(); st.rerun()
+        else:
+            st.info("Não existem manutenções preventivas programadas na infraestrutura.")
 
 def pagina_assembleias():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1612,15 +1766,18 @@ def pagina_assembleias():
                         if not tit.strip() or not assuntos.strip(): st.error("⚠️ Título e Ordem de Trabalhos obrigatórios.")
                         else:
                             session.add(Assembleia(titulo=tit, data_agendada=data_reuniao.strftime("%Y-%m-%d"), assuntos=assuntos))
-                            session.commit()
+                            registar_log(session, "AGENDAR_ASSEMBLEIA", f"Assembleia agendada formalmente: '{tit}' para {data_reuniao}.")
                             if enviar_email_convocatoria:
                                 condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                 emails_enviados = 0
                                 for c in condominos_com_email:
                                     corpo = f"Exmo(a) Sr(a) {c.nome},\n\nConvocatória para a reunião de condomínio: {tit}.\nData: {data_reuniao.strftime('%d/%m/%Y')}\n\nAssuntos:\n{assuntos}\n\nAdministração."
                                     if enviar_email_real(c.email, f"Convocatória - {tit}", corpo): emails_enviados += 1
+                                session.commit()
                                 st.session_state.toast = (f"Assembleia agendada! {emails_enviados} convites enviados.", "✅")
-                            else: st.session_state.toast = ("Assembleia agendada!", "✅")
+                            else: 
+                                session.commit()
+                                st.session_state.toast = ("Assembleia agendada!", "✅")
                             st.session_state.form_key += 1; st.rerun()
 
         reunioes = session.query(Assembleia).order_by(Assembleia.id.desc()).all()
@@ -1634,10 +1791,18 @@ def pagina_assembleias():
                     
                     if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                         if not r.realizada:
-                            if col_act.button("Mark Realizada", key=f"real_{r.id}", width="stretch"): r.realizada = True; session.commit(); st.rerun()
+                            if col_act.button("Mark Realizada", key=f"real_{r.id}", width="stretch"): 
+                                r.realizada = True
+                                registar_log(session, "REALIZAR_ASSEMBLEIA", f"Assembleia ID {r.id} assinalada como concluída.")
+                                session.commit(); st.rerun()
                         else:
-                            if col_act.button("Reabrir", key=f"undo_{r.id}", width="stretch"): r.realizada = False; session.commit(); st.rerun()
-                        if col_act.button("🗑️ Eliminar", key=f"del_ass_{r.id}", width="stretch"): session.delete(r); session.commit(); st.rerun()
+                            if col_act.button("Reabrir", key=f"undo_{r.id}", width="stretch"): 
+                                r.realizada = False
+                                registar_log(session, "REABRIR_ASSEMBLEIA", f"Assembleia concluída ID {r.id} alterada de volta para agendada.")
+                                session.commit(); st.rerun()
+                        if col_act.button("🗑️ Eliminar", key=f"del_ass_{r.id}", width="stretch"): 
+                            registar_log(session, "APAGAR_ASSEMBLEIA", f"Remoção do agendamento da assembleia ID {r.id}.")
+                            session.delete(r); session.commit(); st.rerun()
                             
                     if r.realizada:
                         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
@@ -1645,7 +1810,9 @@ def pagina_assembleias():
                                 texto_atual = r.texto_ata if r.texto_ata else "Decisões tomadas na reunião de condomínio..."
                                 novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=150, key=f"ata_txt_{r.id}")
                                 if st.button("💾 Gravar Ata", key=f"save_{r.id}", type="primary"):
-                                    r.texto_ata = novo_texto; session.commit(); st.toast("Gravado!", icon="✅")
+                                    r.texto_ata = novo_texto
+                                    registar_log(session, "GRAVAR_ATA", f"Ata digital da assembleia ID {r.id} lavrada ou atualizada.")
+                                    session.commit(); st.toast("Gravado!", icon="✅")
                                 
                                 if r.texto_ata and REPORTLAB_INSTALLED:
                                     pdf_ata = gerar_pdf_ata(r)
@@ -1659,12 +1826,15 @@ def pagina_assembleias():
                                         with open(caminho, "wb") as f: f.write(pdf_ata)
                                         if not session.query(Documento).filter_by(nome_ficheiro=nome_ficheiro).first():
                                             session.add(Documento(nome_ficheiro=nome_ficheiro, categoria="Atas de Assembleia", caminho=caminho, carregado_por="Sistema"))
+                                            registar_log(session, "ARQUIVAR_ATA", f"Cópia da ata ID {r.id} exportada para o Arquivo Geral do condomínio.")
                                             session.commit(); st.success("Arquivada!")
                                     if c_m.button("📧 Enviar por Email", key=f"mail_{r.id}"):
                                         conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                         enviados = 0
                                         for c in conds_email:
                                             if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Segue em anexo a ata.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
+                                        registar_log(session, "ENVIAR_ATA_EMAIL", f"Disparados {enviados} emails com anexo da ata ID {r.id}.")
+                                        session.commit()
                                         st.success(f"Enviada para {enviados} proprietários!")
                         else:
                             if r.texto_ata:
@@ -1683,6 +1853,7 @@ def pagina_assembleias():
                         if not perg.strip() or not opcoes_str.strip(): st.error("Campos obrigatórios.")
                         else:
                             session.add(Sondagem(pergunta=perg, opcoes=opcoes_str))
+                            registar_log(session, "CRIAR_SONDAGEM", f"Nova sondagem deliberativa publicada: '{perg}'.")
                             session.commit(); st.session_state.form_key += 1; st.rerun()
 
         sondagens = session.query(Sondagem).order_by(Sondagem.id.desc()).all()
@@ -1708,18 +1879,22 @@ def pagina_assembleias():
                                 escolha = st.radio("Sua resposta:", lista_opcoes)
                                 if st.form_submit_button("Votar"):
                                     session.add(VotoSondagem(sondagem_id=s.id, condomino_id=st.session_state.condomino_id, resposta=escolha))
+                                    registar_log(session, "VOTAR_SONDAGEM", f"Voto encriptado computado na sondagem ID {s.id}.")
                                     session.commit(); st.rerun()
 
                     if st.session_state.perfil == "Admin":
                         c_act1, c_act2 = st.columns(2)
-                        if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): s.ativa = not s.ativa; session.commit(); st.rerun()
+                        if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): 
+                            s.ativa = not s.ativa
+                            registar_log(session, "ALTERAR_ESTADO_SONDAGEM", f"Sondagem ID {s.id} alternada para {'Ativa' if s.ativa else 'Encerrada'}.")
+                            session.commit(); st.rerun()
                         if c_act2.button("Apagar Votação", key=f"del_s_{s.id}"):
                             session.query(VotoSondagem).filter_by(sondagem_id=s.id).delete()
+                            registar_log(session, "APAGAR_SONDAGEM", f"Sondagem ID {s.id} e os respetivos escrutínios apagados permanentemente.")
                             session.delete(s); session.commit(); st.rerun()
         else: st.info("Não existem votações de momento.")
 
 def pagina_mural():
-    from datetime import datetime
     st.header(":material/forum: Mural da Comunidade")
     st.write("Um espaço para partilhar anúncios, pedidos ou comunicados com os seus vizinhos.")
     
@@ -1739,6 +1914,7 @@ def pagina_mural():
                             if cond: fracao_str = f"Fr. {cond.fracao}"
                         
                         session.add(Anuncio(titulo=titulo, mensagem=mensagem, data_criacao=datetime.now().strftime("%Y-%m-%d %H:%M"), criado_por=st.session_state.username, fracao=fracao_str))
+                        registar_log(session, "PUBLICAR_MURAL", f"Novo comunicado fixado no mural social: '{titulo}'.")
                         session.commit(); st.session_state.toast = ("Anúncio publicado com sucesso!", "✅")
                         st.rerun()
 
@@ -1756,6 +1932,7 @@ def pagina_mural():
                     pode_apagar = (st.session_state.perfil == "Admin") or (a.criado_por == st.session_state.username)
                     if pode_apagar:
                         if c_del.button("🗑️ Apagar", key=f"del_an_{a.id}", use_container_width=True):
+                            registar_log(session, "APAGAR_MURAL", f"Postagem ID {a.id} removida do feed comunitário.")
                             session.delete(a); session.commit(); st.rerun()
     else: st.info("O mural está silencioso. Seja o primeiro a publicar algo!")
 
@@ -1766,7 +1943,8 @@ def gerar_snapshot_json():
         "condominos": Condomino, "utilizadores": Utilizador, "orcamentos": Orcamento,
         "movimentos": Movimento, "quotas": Quota, "ocorrencias": Ocorrencia,
         "documentos": Documento, "fornecedores": Fornecedor, "assembleias": Assembleia,
-        "sondagens": Sondagem, "votos_sondagem": VotoSondagem, "anuncios": Anuncio
+        "sondagens": Sondagem, "votos_sondagem": VotoSondagem, "anuncios": Anuncio,
+        "auditoria": Auditoria, "manutencoes": Manutencao
     }
     for key, model in models_to_export.items():
         rows = session.query(model).all()
@@ -1795,6 +1973,8 @@ def restaurar_snapshot_json(json_str):
         session.query(Quota).delete()
         session.query(Utilizador).delete()
         session.query(Condomino).delete()
+        session.query(Auditoria).delete()
+        session.query(Manutencao).delete()
         session.commit()
         
         # 2. Injeção Ordenada Estrita
@@ -1805,7 +1985,8 @@ def restaurar_snapshot_json(json_str):
         tabelas_fase2 = {
             "utilizadores": Utilizador, "orcamentos": Orcamento, "movimentos": Movimento,
             "quotas": Quota, "ocorrencias": Ocorrencia, "documentos": Documento,
-            "fornecedores": Fornecedor, "assembleias": Assembleia, "sondagens": Sondagem
+            "fornecedores": Fornecedor, "assembleias": Assembleia, "sondagens": Sondagem,
+            "auditoria": Auditoria, "manutencoes": Manutencao
         }
         for key, model in tabelas_fase2.items():
             if key in data:
@@ -1816,12 +1997,14 @@ def restaurar_snapshot_json(json_str):
             for r in data["votos_sondagem"]: session.add(VotoSondagem(**r))
         if "anuncios" in data:
             for r in data["anuncios"]: session.add(Anuncio(**r))
+        
+        registar_log(session, "RESTORE_BASEDADOS", "Executado restauro estrutural completo de segurança via JSON.")
         session.commit()
         
         # 3. Sincronizar Sequências do PostgreSQL
         if engine.name == 'postgresql':
             from sqlalchemy import text
-            tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos']
+            tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos', 'auditoria', 'manutencoes']
             for tabela in tabelas_seq:
                 try:
                     max_id = session.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {tabela};")).scalar()
@@ -1838,101 +2021,112 @@ def pagina_configuracoes():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/settings: Configurações e Segurança")
     
-    if not st.session_state.modo_leitura:
-        tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Backup de Dados & Reset BD"])
+    if st.session_state.perfil == "Admin":
+        tab_geral, tab_avisos, tab_seguranca, tab_auditoria = st.tabs([
+            ":material/business: Dados Gerais", 
+            ":material/campaign: Quadro de Avisos", 
+            ":material/security: Backup de Dados & Reset BD",
+            ":material/analytics: Registo de Auditoria"
+        ])
         
         with tab_geral:
-            with st.container(border=True):
-                with st.form("form_config"):
-                    st.subheader("Configurações do Condomínio")
-                    nome = st.text_input("Nome do Condomínio", value=config.get("NOME_CONDOMINIO", ""), key=f"cfg_n_{st.session_state.form_key}")
-                    morada = st.text_input("Morada", value=config.get("MORADA_CONDOMINIO", ""), key=f"cfg_m_{st.session_state.form_key}")
-                    nif = st.text_input("NIF", value=config.get("NIF_CONDOMINIO", ""), key=f"cfg_nif_{st.session_state.form_key}")
-                    iban = st.text_input("IBAN para Pagamentos", value=config.get("IBAN_CONDOMINIO", ""), key=f"cfg_ib_{st.session_state.form_key}")
-                    valor_quota = st.number_input("Valor Padrão da Quota (€)", value=config.get("VALOR_MENSAL_FIXO", 50.0), min_value=0.0, key=f"cfg_v_{st.session_state.form_key}")
-                    if st.form_submit_button("Guardar Configurações"):
-                        config["NOME_CONDOMINIO"] = nome
-                        config["MORADA_CONDOMINIO"] = morada
-                        config["NIF_CONDOMINIO"] = nif
-                        config["IBAN_CONDOMINIO"] = iban
-                        config["VALOR_MENSAL_FIXO"] = valor_quota
-                        guardar_configs(config)
-                        st.session_state.toast = ("Configurações updated!", "✅")
-                        st.session_state.form_key += 1; st.rerun()
+            if not st.session_state.modo_leitura:
+                with st.container(border=True):
+                    with st.form("form_config"):
+                        st.subheader("Configurações do Condomínio")
+                        nome = st.text_input("Nome do Condomínio", value=config.get("NOME_CONDOMINIO", ""), key=f"cfg_n_{st.session_state.form_key}")
+                        morada = st.text_input("Morada", value=config.get("MORADA_CONDOMINIO", ""), key=f"cfg_m_{st.session_state.form_key}")
+                        nif = st.text_input("NIF", value=config.get("NIF_CONDOMINIO", ""), key=f"cfg_nif_{st.session_state.form_key}")
+                        iban = st.text_input("IBAN para Pagamentos", value=config.get("IBAN_CONDOMINIO", ""), key=f"cfg_ib_{st.session_state.form_key}")
+                        valor_quota = st.number_input("Valor Padrão da Quota (€)", value=config.get("VALOR_MENSAL_FIXO", 50.0), min_value=0.0, key=f"cfg_v_{st.session_state.form_key}")
+                        if st.form_submit_button("Guardar Configurações"):
+                            config["NOME_CONDOMINIO"] = nome
+                            config["MORADA_CONDOMINIO"] = morada
+                            config["NIF_CONDOMINIO"] = nif
+                            config["IBAN_CONDOMINIO"] = iban
+                            config["VALOR_MENSAL_FIXO"] = valor_quota
+                            guardar_configs(config)
+                            registar_log(session, "ALTERAR_CONFIGURACOES", "Metadados de cabeçalho estrutural do condomínio atualizados.")
+                            session.commit()
+                            st.session_state.toast = ("Configurações updated!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
                         
         with tab_avisos:
-            with st.container(border=True):
-                with st.form("form_avisos"):
-                    st.subheader("Avisos à Comunidade")
-                    aviso_ativo = st.checkbox("Mostrar aviso publicamente", value=config.get("AVISO_ATIVO", False), key=f"cfg_av_at_{st.session_state.form_key}")
-                    aviso_texto = st.text_area("Texto do Aviso", value=config.get("AVISO_GLOBAL", ""), key=f"cfg_av_txt_{st.session_state.form_key}")
-                    
-                    if st.form_submit_button("Atualizar Quadro de Avisos"):
-                        config["AVISO_ATIVO"] = aviso_ativo
-                        config["AVISO_GLOBAL"] = aviso_texto
-                        guardar_configs(config)
-                        st.session_state.toast = ("Aviso atualizado com sucesso!", "✅")
-                        st.session_state.form_key += 1; st.rerun()
+            if not st.session_state.modo_leitura:
+                with st.container(border=True):
+                    with st.form("form_avisos"):
+                        st.subheader("Avisos à Comunidade")
+                        aviso_ativo = st.checkbox("Mostrar aviso publicamente", value=config.get("AVISO_ATIVO", False), key=f"cfg_av_at_{st.session_state.form_key}")
+                        aviso_texto = st.text_area("Texto do Aviso", value=config.get("AVISO_GLOBAL", ""), key=f"cfg_av_txt_{st.session_state.form_key}")
+                        
+                        if st.form_submit_button("Atualizar Quadro de Avisos"):
+                            config["AVISO_ATIVO"] = aviso_ativo
+                            config["AVISO_GLOBAL"] = aviso_texto
+                            guardar_configs(config)
+                            registar_log(session, "ALTERAR_QUADRO_AVISOS", f"Quadro de notícias global atualizado (Visibilidade: {aviso_ativo}).")
+                            session.commit()
+                            st.session_state.toast = ("Aviso atualizado com sucesso!", "✅")
+                            st.session_state.form_key += 1; st.rerun()
                         
         with tab_seguranca:
-            # --- ÁREA 1: SNAPSHOT JSON PREMIUM COMPLETO (DUMP / RESTORE) ---
-            with st.container(border=True):
-                st.subheader("📦 Segurança Completa da Base de Dados")
-                st.write("Processo de Exportação e Importação da Base de Dados num unico ficheiro.")
-                
-                c_snap1, c_snap2 = st.columns(2)
-                with c_snap1:
-                    st.write("**1. Backup da Segurança:**")
-                    try:
-                        dados_json_dump = gerar_snapshot_json()
-                        st.download_button(
-                            "📥 Exportar Segurança Completa (.json)",
-                            data=dados_json_dump,
-                            file_name=f"DUMP_CONDOMINIO_{date.today()}.json",
-                            mime="application/json",
-                            use_container_width=True,
-                            type="secondary"
-                        )
-                    except Exception as e_snap:
-                        st.error(f"Erro ao comprimir dados: {e_snap}")
-                        
-                with c_snap2:
-                    st.write("**2. Restore da Segurança:**")
-                    arq_import_json = st.file_uploader("Importar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
-                    if arq_import_json is not None:
-                        if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
-                            conteudo_json_string = arq_import_json.read().decode("utf-8")
-                            sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
-                            if sucesso:
-                                st.success(msg_res)
-                                import time
-                                time.sleep(2)
-                                st.session_state.logado = False
-                                st.session_state.username = None
-                                st.rerun()
-                            else:
-                                st.error(msg_res)
-
-            # --- ÁREA 2: BACKUPS PARCIAIS (EXCEL) ---
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.container(border=True):
-                st.subheader("📊 Exportações Parciais (Excel)")
-                col_b1, col_b2 = st.columns(2)
-                
-                df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
-                if not df_backup_cond.empty:
-                    csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b1.download_button("📥 Descarregar Tabela de Condónimos (CSV)", data=csv_cond, file_name=f"Lista_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
-                else: col_b1.info("Sem dados de moradores.")
+            if not st.session_state.modo_leitura:
+                # --- ÁREA 1: SNAPSHOT JSON PREMIUM COMPLETO (DUMP / RESTORE) ---
+                with st.container(border=True):
+                    st.subheader("📦 Segurança Completa da Base de Dados")
+                    st.write("Processo de Exportação e Importação da Base de Dados num unico ficheiro.")
                     
-                df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
-                if not df_backup_fin.empty:
-                    csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode("utf-8-sig")
-                    col_b2.download_button("📥 Descarregar Finanças e Extratos (CSV)", data=csv_fin, file_name=f"Movimentos_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
-                else: col_b2.info("Sem dados financeiros.")
-            
-            # --- ÁREA 3: ZONA DE PERIGO (RESET) ---
-            if st.session_state.perfil == "Admin":
+                    c_snap1, c_snap2 = st.columns(2)
+                    with c_snap1:
+                        st.write("**1. Backup da Segurança:**")
+                        try:
+                            dados_json_dump = gerar_snapshot_json()
+                            st.download_button(
+                                "📥 Exportar Segurança Completa (.json)",
+                                data=dados_json_dump,
+                                file_name=f"DUMP_CONDOMINIO_{date.today()}.json",
+                                mime="application/json",
+                                use_container_width=True,
+                                type="secondary"
+                            )
+                        except Exception as e_snap:
+                            st.error(f"Erro ao comprimir dados: {e_snap}")
+                            
+                    with c_snap2:
+                        st.write("**2. Restore da Segurança:**")
+                        arq_import_json = st.file_uploader("Importar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
+                        if arq_import_json is not None:
+                            if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
+                                conteudo_json_string = arq_import_json.read().decode("utf-8")
+                                sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
+                                if sucesso:
+                                    st.success(msg_res)
+                                    import time
+                                    time.sleep(2)
+                                    st.session_state.logado = False
+                                    st.session_state.username = None
+                                    st.rerun()
+                                else:
+                                    st.error(msg_res)
+
+                # --- ÁREA 2: BACKUPS PARCIAIS (EXCEL) ---
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    st.subheader("📊 Exportações Parciais (Excel)")
+                    col_b1, col_b2 = st.columns(2)
+                    
+                    df_backup_cond = pd.DataFrame([{"ID": c.id, "Fração": c.fracao, "Nome": c.nome, "NIF": c.nif, "Email": c.email} for c in session.query(Condomino).all()])
+                    if not df_backup_cond.empty:
+                        csv_cond = df_backup_cond.to_csv(index=False, sep=";").encode("utf-8-sig")
+                        col_b1.download_button("📥 Descarregar Tabela de Condónimos (CSV)", data=csv_cond, file_name=f"Lista_Moradores_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    else: col_b1.info("Sem dados de moradores.")
+                        
+                    df_backup_fin = pd.DataFrame([{"Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in session.query(Movimento).all()])
+                    if not df_backup_fin.empty:
+                        csv_fin = df_backup_fin.to_csv(index=False, sep=";").encode("utf-8-sig")
+                        col_b2.download_button("📥 Descarregar Finanças e Extratos (CSV)", data=csv_fin, file_name=f"Movimentos_Contas_{date.today()}.csv", mime="text/csv", use_container_width=True)
+                    else: col_b2.info("Sem dados financeiros.")
+                
+                # --- ÁREA 3: ZONA DE PERIGO (RESET) ---
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.container(border=True):
                     st.subheader("🚨 Zona de Perigo 🚨")
@@ -1959,10 +2153,12 @@ def pagina_configuracoes():
                                     session.query(Quota).delete()
                                     session.query(Utilizador).delete()
                                     session.query(Condomino).delete()
+                                    session.query(Auditoria).delete()
+                                    session.query(Manutencao).delete()
                                     session.commit()
                                     
                                     if engine.name == "postgresql":
-                                        tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos"]
+                                        tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos", "auditoria", "manutencoes"]
                                         for tabela in tabelas:
                                             try: session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
                                             except Exception: session.rollback()
@@ -1976,6 +2172,17 @@ def pagina_configuracoes():
                                 except Exception as e:
                                     session.rollback()
                                     st.error(f"Erro ao tentar limpar: {e}")
+
+        with tab_auditoria:
+            st.subheader("🕵️ Registo Histórico de Atividades (Auditoria do Portal)")
+            st.write("Consulta forense e transparente de todas as modificações críticas efetuadas nas tabelas do sistema.")
+            
+            logs_db = session.query(Auditoria).order_by(Auditoria.id.desc()).limit(200).all()
+            if logs_db:
+                df_logs = pd.DataFrame([{"Data/Hora": l.data_hora, "Utilizador": l.username, "Ação Executada": l.acao, "Metadados/Detalhes": l.detalhes} for l in logs_db])
+                st.dataframe(df_logs, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhuma atividade registada no histórico até ao momento.")
 
 # ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
