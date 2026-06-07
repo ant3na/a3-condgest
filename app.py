@@ -154,6 +154,7 @@ if "username" not in st.session_state: st.session_state.username = None
 if "perfil" not in st.session_state: st.session_state.perfil = None
 if "condomino_id" not in st.session_state: st.session_state.condomino_id = None
 if "user_id" not in st.session_state: st.session_state.user_id = None
+if "alertas_lidos" not in st.session_state: st.session_state.alertas_lidos = []
 
 if "perm_dashboard" not in st.session_state: st.session_state.perm_dashboard = False
 if "perm_condominos" not in st.session_state: st.session_state.perm_condominos = False
@@ -512,29 +513,33 @@ meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "A
 def verificar_notificacoes_pendentes(sessao_db, perfil, condomino_id):
     from datetime import datetime, date
     hoje_local = date.today()
+    lidos = st.session_state.get("alertas_lidos", []) # Puxa os lidos
     
-    # Alertas Globais (Assembleias nos próximos 5 dias ou atrasadas)
+    # Alertas Globais
     ass_futuras = sessao_db.query(Assembleia).filter_by(realizada=False).all()
     for a in ass_futuras:
-        try:
-            d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
-            if (d_ass - hoje_local).days <= 5: 
-                return True
-        except Exception: pass
+        uid = f"ass_{a.id}" # Criar um ID único para este alerta
+        if uid not in lidos:
+            try:
+                d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
+                if (d_ass - hoje_local).days <= 5: return True
+            except Exception: pass
 
     # Alertas Admin
     if perfil == "Admin":
-        if sessao_db.query(Ocorrencia).filter_by(resolvida=False).count() > 0: return True
-        if sessao_db.query(Manutencao).filter_by(estado="Pendente").count() > 0: return True
+        for o in sessao_db.query(Ocorrencia).filter_by(resolvida=False).all():
+            if f"oc_{o.id}" not in lidos: return True
+        for m in sessao_db.query(Manutencao).filter_by(estado="Pendente").all():
+            if f"man_{m.id}" not in lidos: return True
 
     # Alertas Condómino
     if condomino_id:
-        if sessao_db.query(Quota).filter_by(condomino_id=condomino_id, paga=False).count() > 0: return True
+        for d in sessao_db.query(Quota).filter_by(condomino_id=condomino_id, paga=False).all():
+            if f"quota_{d.id}" not in lidos: return True
             
-        sondagens = sessao_db.query(Sondagem).filter_by(ativa=True).all()
-        for s in sondagens:
+        for s in sessao_db.query(Sondagem).filter_by(ativa=True).all():
             if not sessao_db.query(VotoSondagem).filter_by(sondagem_id=s.id, condomino_id=condomino_id).first():
-                return True
+                if f"sond_{s.id}" not in lidos: return True
 
     return False
 
@@ -556,7 +561,7 @@ def configurar_sidebar():
         
         if tem_alertas:
             html_lampada = '<span class="notificacao-ativa">💡</span>'
-            st.sidebar.markdown(f"{html_lampada} **Tens notificações pendentes!**", unsafe_allow_html=True)
+            st.sidebar.markdown(f"{html_lampada} **Tens Notificações!**", unsafe_allow_html=True)
             
             # AQUI: Usamos a variável global PAGE_NOTIFICACOES sem aspas!
             if st.sidebar.button("Ir para Central de Notificações", use_container_width=True, type="primary"):
@@ -2042,10 +2047,20 @@ def pagina_notificacoes():
     if st.session_state.condomino_id:
         # 4. Quotas em Dívida
         dividas = session.query(Quota).filter_by(condomino_id=st.session_state.condomino_id, paga=False).all()
-        if dividas:
-            alertas_encontrados = True
-            total_divida = sum([d.valor for d in dividas])
-            st.error(f"**Tesouraria:** Tem {len(dividas)} quota(s) em atraso no valor total de {total_divida:.2f} €.\n\n*Ação: Vá ao 'Dashboard' para ver o IBAN de pagamento.*", icon="💰")
+        for d in dividas:
+            uid = f"quota_{d.id}"
+            if uid not in st.session_state.alertas_lidos:
+                alertas_encontrados = True
+                col_alerta, col_btn = st.columns([5, 1])
+                
+                with col_alerta:
+                    st.error(f"**Tesouraria:** Quota em atraso ({d.mes_ano}) no valor de {d.valor:.2f} €.", icon="💰")
+                
+                with col_btn:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("❌ Ocultar", key=f"btn_hide_{uid}", use_container_width=True):
+                        st.session_state.alertas_lidos.append(uid)
+                        st.rerun()
             
         # 5. Votações Pendentes
         sond_ativas = session.query(Sondagem).filter_by(ativa=True).all()
