@@ -487,6 +487,19 @@ st.markdown("""
     div[data-testid="metric-container"] { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 5% 5% 5% 10%; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     div[data-testid="stVerticalBlockBorderWrapper"] { border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; padding: 8px; }
     div[data-testid="stAlert"] { border-radius: 8px; }
+    
+    /* ANIMAÇÃO DA NOTIFICAÇÃO (PISCAR/PULSAR) */
+    @keyframes piscar {
+      0% { opacity: 1; transform: scale(1); color: #fbbf24; }
+      50% { opacity: 0.5; transform: scale(1.2); color: #f59e0b; }
+      100% { opacity: 1; transform: scale(1); color: #fbbf24; }
+    }
+    .notificacao-ativa {
+      display: inline-block;
+      animation: piscar 1.5s infinite ease-in-out;
+      font-size: 1.2em;
+      margin-right: 5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -495,6 +508,39 @@ st.markdown("""
 # ==========================================
 hoje = date.today()
 meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+
+def verificar_notificacoes_pendentes(sessao_db, perfil, condomino_id):
+    """
+    Verifica se existem notificações urgentes para o utilizador atual.
+    Retorna True (se houver notificações) ou False.
+    """
+    # 1. Notificações para Administradores
+    if perfil == "Admin":
+        # Tem ocorrências não resolvidas?
+        ocs_pendentes = sessao_db.query(Ocorrencia).filter_by(resolvida=False).count()
+        if ocs_pendentes > 0:
+            return True
+            
+        # Tem manutenções atrasadas ou pendentes?
+        manutencoes = sessao_db.query(Manutencao).filter_by(estado="Pendente").count()
+        if manutencoes > 0:
+            return True
+
+    # 2. Notificações para Moradores (e Admins que também sejam condóminos)
+    if condomino_id:
+        # Tem quotas em dívida?
+        dividas = sessao_db.query(Quota).filter_by(condomino_id=condomino_id, paga=False).count()
+        if dividas > 0:
+            return True
+            
+        # Existem sondagens ativas nas quais ainda não votou?
+        sondagens_ativas = sessao_db.query(Sondagem).filter_by(ativa=True).all()
+        for sond in sondagens_ativas:
+            ja_votou = sessao_db.query(VotoSondagem).filter_by(sondagem_id=sond.id, condomino_id=condomino_id).first()
+            if not ja_votou:
+                return True
+
+    return False
 
 def configurar_sidebar():
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
@@ -508,7 +554,24 @@ def configurar_sidebar():
         st.sidebar.write(f":material/account_circle: Olá, **{st.session_state.username}**")
         if st.session_state.modo_leitura:
             st.sidebar.caption(":material/visibility: MODO LEITURA")
+            
+        # === INÍCIO DA CENTRAL DE NOTIFICAÇÕES NA SIDEBAR ===
+        tem_alertas = verificar_notificacoes_pendentes(session, st.session_state.perfil, st.session_state.condomino_id)
         
+        if tem_alertas:
+            # Html com a classe CSS de animação
+            html_lampada = '<span class="notificacao-ativa">💡</span>'
+            st.sidebar.markdown(f"{html_lampada} **Tens notificações pendentes!**", unsafe_allow_html=True)
+            # Um botão rápido para ver os detalhes
+            if st.sidebar.button("Ir para Central de Notificações", use_container_width=True, type="primary"):
+                # Para simplificar, direcionamos para o Dashboard onde já mostras os avisos
+                # Se quiseres, podes criar uma função pagina_notificacoes() inteiramente nova
+                st.session_state.toast = ("Redirecionado para os alertas principais.", "ℹ️")
+        else:
+            st.sidebar.markdown("🔕 *Sem notificações novas.*")
+        # === FIM DA CENTRAL DE NOTIFICAÇÕES ===
+
+        st.sidebar.markdown("<br>", unsafe_allow_html=True)
         if st.sidebar.button(":material/logout: Terminar Sessão", width="stretch"):
             st.session_state.logado = False
             st.session_state.username = None
