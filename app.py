@@ -558,9 +558,9 @@ def configurar_sidebar():
             html_lampada = '<span class="notificacao-ativa">💡</span>'
             st.sidebar.markdown(f"{html_lampada} **Tens notificações pendentes!**", unsafe_allow_html=True)
             
-            # Quando clicado, usa st.switch_page com o nome exato que vamos dar à página no menu!
+            # AQUI: Usamos a variável global PAGE_NOTIFICACOES sem aspas!
             if st.sidebar.button("Ir para Central de Notificações", use_container_width=True, type="primary"):
-                st.switch_page("Central de Notificações") 
+                st.switch_page(PAGE_NOTIFICACOES) 
         else:
             st.sidebar.markdown("🔕 *Sem notificações novas.*")
         # === FIM DA CENTRAL DE NOTIFICAÇÕES ===
@@ -2057,7 +2057,8 @@ def pagina_notificacoes():
 
     if not alertas_encontrados:
         st.success("🎉 Excelente! Não tem nenhuma notificação pendente neste momento. Está tudo em dia!")
-
+        
+PAGE_NOTIFICACOES = st.Page(pagina_notificacoes, title="Central de Notificações", icon=":material/notifications_active:")
 
 def gerar_snapshot_json():
     db_dump = {}
@@ -2316,7 +2317,7 @@ else:
         pg = st.navigation({
             "VISÃO GERAL": [
                 st.Page(pagina_dashboard, title="Dashboard", icon=":material/dashboard:", default=True), 
-                st.Page(pagina_notificacoes, title="Central de Notificações", icon=":material/notifications_active:"), # ADICIONADO AQUI
+                PAGE_NOTIFICACOES, # <--- Usar a variável aqui
                 st.Page(pagina_condominos, title="Condóminos", icon=":material/group:")
             ],
             "TESOURARIA": [
@@ -2340,7 +2341,7 @@ else:
         nav_morador = {
             "A MINHA CONTA": [
                 st.Page(pagina_dashboard_morador, title="Conta Corrente", icon=":material/home:", default=True),
-                st.Page(pagina_notificacoes, title="Central de Notificações", icon=":material/notifications_active:") # ADICIONADO AQUI
+                PAGE_NOTIFICACOES # <--- E usar a variável aqui também
             ]
         }
         
