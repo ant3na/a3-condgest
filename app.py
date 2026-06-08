@@ -6,6 +6,7 @@ import json
 import base64
 import smtplib
 import unicodedata
+import google.generativeai as genai
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
