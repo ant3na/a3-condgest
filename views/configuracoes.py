@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import date
 
 from db import get_session, engine
-from models import Condomino, Movimento, VotoSondagem, Sondagem, Anuncio, Assembleia, Ocorrencia, Fornecedor, Documento, Orcamento, Quota, Utilizador
+from models import Condomino, Movimento, VotoSondagem, Sondagem, Anuncio, Assembleia, Ocorrencia, Fornecedor, Documento, Orcamento, Quota, Utilizador, LogAtividade
 from utils import configurar_sidebar, config, guardar_configs, gerar_snapshot_json, restaurar_snapshot_json
 
 session = get_session()
