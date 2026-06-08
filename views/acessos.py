@@ -43,6 +43,7 @@ with tab_users:
                         )
                         try:
                             session.add(novo_user); session.commit()
+                            registar_atividade(session, st.session_state.username, "Criar Acesso", f"Utilizador {novo_user.username} criado para a fração {cond_sel.fracao}")
                             sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user.username} | Pass: mudar123"
                         except Exception:
                             session.rollback()
@@ -57,6 +58,7 @@ with tab_users:
                             )
                             try:
                                 session.add(novo_user_alt); session.commit()
+                                registar_atividade(session, st.session_state.username, "Criar Acesso", f"Utilizador {novo_user.username} criado para a fração {cond_sel.fracao}")
                                 sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user_alt.username} | Pass: mudar123"
                             except Exception as e2: 
                                 session.rollback()
@@ -64,8 +66,19 @@ with tab_users:
                         if sucesso: st.session_state.toast = (msg_toast, "✅"); st.rerun()
                 else:
                     c1, c2 = st.columns(2)
-                    if c1.button("Repor Password para 'mudar123'", use_container_width=True): user_existente.password_hash = generate_password_hash("mudar123"); session.commit(); st.session_state.toast = ("Reposta!", "✅"); st.rerun()
-                    if c2.button("Remover Acesso", use_container_width=True): session.delete(user_existente); session.commit(); st.session_state.toast = ("Removido.", "🗑️"); st.rerun()
+                    if c1.button("Repor Password para 'mudar123'", use_container_width=True): 
+                        user_existente.password_hash = generate_password_hash("mudar123")
+                        session.commit()
+                        registar_atividade(session, st.session_state.username, "Repor Password", f"Password reposta para o utilizador {user_existente.username}") # <-- INSERIR AQUI
+                        st.session_state.toast = ("Reposta!", "✅")
+                        st.rerun()
+                        
+                    if c2.button("Remover Acesso", use_container_width=True): 
+                        session.delete(user_existente)
+                        session.commit()
+                        registar_atividade(session, st.session_state.username, "Remover Acesso", f"Acesso removido para a fração {cond_sel.fracao}") # <-- INSERIR AQUI
+                        st.session_state.toast = ("Removido.", "🗑️")
+                        st.rerun()
     else: st.info("Ainda não tem condóminos.")
 
 with tab_perms:
