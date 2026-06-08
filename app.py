@@ -558,7 +558,7 @@ def configurar_sidebar():
                     st.warning("⚠️ Chave GEMINI_API_KEY não configurada no secrets.toml.")
                 else:
                     genai.configure(api_key=CHAVE_API)
-                    model = genai.GenerativeModel('gemini-1.5-pro-latest')
+                    model = genai.GenerativeModel('gemini-pro')
                     
                     # Interface do chat dentro do expander
                     c_chat = st.container(height=300)
