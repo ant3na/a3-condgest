@@ -13,7 +13,7 @@ from io import BytesIO
 from sqlalchemy import func, and_, text
 
 # Importações da Base de Dados
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, LogAtividade
 from db import get_session, engine
 
 # ==========================================
