@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash
 
 # 1. Configuração Global e Base de Dados
 st.set_page_config(page_title="A3® Portal do Condomínio", page_icon="🏢", layout="wide")
+st.title("Teste: A ligação está a funcionar!")
 init_db()
 session = get_session()
 
