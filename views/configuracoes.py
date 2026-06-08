@@ -13,7 +13,12 @@ mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
 st.header(":material/settings: Configurações e Segurança")
 
 if not st.session_state.modo_leitura:
-    tab_geral, tab_avisos, tab_seguranca = st.tabs([":material/business: Dados Gerais", ":material/campaign: Quadro de Avisos", ":material/security: Backup de Dados & Reset BD"])
+    tab_geral, tab_avisos, tab_seguranca, tab_logs = st.tabs([
+        ":material/business: Dados Gerais", 
+        ":material/campaign: Quadro de Avisos", 
+        ":material/security: Backup & Reset BD",
+        ":material/history: Atividades"
+    ])
     
     with tab_geral:
         with st.container(border=True):
