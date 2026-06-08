@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from werkzeug.security import generate_password_hash
+
 from db import get_session
 from models import Condomino, Utilizador
 from utils import configurar_sidebar, formatar_username, registar_atividade
@@ -58,7 +59,7 @@ with tab_users:
                             )
                             try:
                                 session.add(novo_user_alt); session.commit()
-                                registar_atividade(session, st.session_state.username, "Criar Acesso", f"Utilizador {novo_user.username} criado para a fração {cond_sel.fracao}")
+                                registar_atividade(session, st.session_state.username, "Criar Acesso", f"Utilizador {novo_user_alt.username} criado para a fração {cond_sel.fracao} (Alternativo)")
                                 sucesso, msg_toast = True, f"Acesso criado! Login: {novo_user_alt.username} | Pass: mudar123"
                             except Exception as e2: 
                                 session.rollback()
@@ -69,16 +70,13 @@ with tab_users:
                     if c1.button("Repor Password para 'mudar123'", use_container_width=True): 
                         user_existente.password_hash = generate_password_hash("mudar123")
                         session.commit()
-                        registar_atividade(session, st.session_state.username, "Repor Password", f"Password reposta para o utilizador {user_existente.username}") # <-- INSERIR AQUI
-                        st.session_state.toast = ("Reposta!", "✅")
-                        st.rerun()
-                        
+                        registar_atividade(session, st.session_state.username, "Repor Password", f"Password reposta para o utilizador {user_existente.username}")
+                        st.session_state.toast = ("Reposta!", "✅"); st.rerun()
                     if c2.button("Remover Acesso", use_container_width=True): 
                         session.delete(user_existente)
                         session.commit()
-                        registar_atividade(session, st.session_state.username, "Remover Acesso", f"Acesso removido para a fração {cond_sel.fracao}") # <-- INSERIR AQUI
-                        st.session_state.toast = ("Removido.", "🗑️")
-                        st.rerun()
+                        registar_atividade(session, st.session_state.username, "Remover Acesso", f"Acesso removido para a fração {cond_sel.fracao}")
+                        st.session_state.toast = ("Removido.", "🗑️"); st.rerun()
     else: st.info("Ainda não tem condóminos.")
 
 with tab_perms:

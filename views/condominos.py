@@ -4,7 +4,7 @@ from sqlalchemy import func
 
 from db import get_session
 from models import Condomino
-from utils import configurar_sidebar
+from utils import configurar_sidebar, registar_atividade
 
 session = get_session()
 
@@ -87,12 +87,14 @@ if not st.session_state.modo_leitura:
             if c1.form_submit_button("Guardar"):
                 if st.session_state.get("edit_type") == "cond":
                     obj.nome, obj.fracao, obj.nif, obj.telefone, obj.email, obj.permilagem = n, f, nif_input, t, e, p
+                    session.commit()
+                    registar_atividade(session, st.session_state.username, "Editar Condómino", f"Fração {f} atualizada")
                     st.session_state.toast = ("Condómino atualizado!", "✏️")
                 else:
                     session.add(Condomino(nome=n, fracao=f, nif=nif_input, telefone=t, email=e, permilagem=p))
+                    session.commit()
+                    registar_atividade(session, st.session_state.username, "Criar Condómino", f"Manual: Fração {f} ({n})")
                     st.session_state.toast = ("Condómino adicionado!", "✅")
-                session.commit(); 
-                registar_atividade(session, st.session_state.username, "Guardar Condómino", f"Registo guardado para a fração {f} ({n})")
                 clear_edit(); st.rerun()
             if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
 
@@ -112,8 +114,8 @@ if conds:
                 if c_edit.button(":material/edit: Editar Fração", use_container_width=True):
                     st.session_state.edit_id = id_sel; st.session_state.edit_type = "cond"; st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
                 if c_del.button(":material/delete: Apagar Registo", use_container_width=True):
-                    session.delete(cond_obj); 
-                    session.commit(); 
-                    registar_atividade(session, st.session_state.username, "Apagar Condómino", f"Registo apagado para a fração {cond_obj.fracao}")
+                    frac_del = cond_obj.fracao
+                    session.delete(cond_obj); session.commit()
+                    registar_atividade(session, st.session_state.username, "Apagar Condómino", f"Registo apagado para a fração {frac_del}")
                     st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
 else: st.info("Ainda não existem condóminos registados.")

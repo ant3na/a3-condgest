@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash
 # Importar da nossa base de dados e utilitários
 from db import get_session
 from models import Condomino, Quota, Utilizador
-from utils import configurar_sidebar, config
+from utils import configurar_sidebar, config, registar_atividade
 
 session = get_session()
 
@@ -33,6 +33,7 @@ with st.expander(":material/key: Alterar a minha Password", expanded=False):
                 utilizador_ativo = session.get(Utilizador, st.session_state.user_id)
                 utilizador_ativo.password_hash = generate_password_hash(nova_pwd)
                 session.commit()
+                registar_atividade(session, st.session_state.username, "Alterar Password", "O utilizador atualizou a sua própria credencial de acesso")
                 st.session_state.toast = ("Password atualizada com sucesso!", "✅")
                 if "form_key" in st.session_state: st.session_state.form_key += 1
                 st.rerun()

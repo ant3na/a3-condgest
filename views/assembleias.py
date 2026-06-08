@@ -4,7 +4,7 @@ from datetime import datetime
 
 from db import get_session
 from models import Assembleia, Sondagem, VotoSondagem, Condomino, Documento
-from utils import configurar_sidebar, enviar_email_real, gerar_pdf_ata, REPORTLAB_INSTALLED, hoje
+from utils import configurar_sidebar, enviar_email_real, gerar_pdf_ata, REPORTLAB_INSTALLED, hoje, registar_atividade
 
 session = get_session()
 
@@ -27,6 +27,7 @@ with tab_reunioes:
                     else:
                         session.add(Assembleia(titulo=tit, data_agendada=data_reuniao.strftime("%Y-%m-%d"), assuntos=assuntos))
                         session.commit()
+                        registar_atividade(session, st.session_state.username, "Agendar Assembleia", f"Tema: {tit}")
                         if enviar_email_convocatoria:
                             condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                             emails_enviados = 0
@@ -48,10 +49,20 @@ with tab_reunioes:
                 
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                     if not r.realizada:
-                        if col_act.button("Mark Realizada", key=f"real_{r.id}", use_container_width=True): r.realizada = True; session.commit(); st.rerun()
+                        if col_act.button("Mark Realizada", key=f"real_{r.id}", use_container_width=True): 
+                            r.realizada = True; session.commit()
+                            registar_atividade(session, st.session_state.username, "Assembleia Realizada", f"Assembleia ID {r.id}: {r.titulo}")
+                            st.rerun()
                     else:
-                        if col_act.button("Reabrir", key=f"undo_{r.id}", use_container_width=True): r.realizada = False; session.commit(); st.rerun()
-                    if col_act.button("🗑️ Eliminar", key=f"del_ass_{r.id}", use_container_width=True): session.delete(r); session.commit(); st.rerun()
+                        if col_act.button("Reabrir", key=f"undo_{r.id}", use_container_width=True): 
+                            r.realizada = False; session.commit()
+                            registar_atividade(session, st.session_state.username, "Reabrir Assembleia", f"Assembleia ID {r.id}: {r.titulo}")
+                            st.rerun()
+                    if col_act.button("🗑️ Eliminar", key=f"del_ass_{r.id}", use_container_width=True): 
+                        tit_removido = r.titulo
+                        session.delete(r); session.commit()
+                        registar_atividade(session, st.session_state.username, "Eliminar Assembleia", f"Tema: {tit_removido}")
+                        st.rerun()
                         
                 if r.realizada:
                     if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
@@ -59,7 +70,9 @@ with tab_reunioes:
                             texto_atual = r.texto_ata if r.texto_ata else "Decisões tomadas na reunião de condomínio..."
                             novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=150, key=f"ata_txt_{r.id}")
                             if st.button("💾 Gravar Ata", key=f"save_{r.id}", type="primary"):
-                                r.texto_ata = novo_texto; session.commit(); st.toast("Gravado!", icon="✅")
+                                r.texto_ata = novo_texto; session.commit()
+                                registar_atividade(session, st.session_state.username, "Gravar Ata", f"Ata redigida para: {r.titulo}")
+                                st.toast("Gravado!", icon="✅")
                             
                             if r.texto_ata and REPORTLAB_INSTALLED:
                                 pdf_ata = gerar_pdf_ata(r)
@@ -73,7 +86,9 @@ with tab_reunioes:
                                     with open(caminho, "wb") as f: f.write(pdf_ata)
                                     if not session.query(Documento).filter_by(nome_ficheiro=nome_ficheiro).first():
                                         session.add(Documento(nome_ficheiro=nome_ficheiro, categoria="Atas de Assembleia", caminho=caminho, carregado_por="Sistema"))
-                                        session.commit(); st.success("Arquivada!")
+                                        session.commit()
+                                        registar_atividade(session, st.session_state.username, "Arquivar Ata PDF", f"Ficheiro: {nome_ficheiro}")
+                                        st.success("Arquivada!")
                                 if c_m.button("📧 Enviar por Email", key=f"mail_{r.id}"):
                                     conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                     enviados = 0
@@ -97,7 +112,9 @@ with tab_votos:
                     if not perg.strip() or not opcoes_str.strip(): st.error("Campos obrigatórios.")
                     else:
                         session.add(Sondagem(pergunta=perg, opcoes=opcoes_str))
-                        session.commit(); st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
+                        session.commit()
+                        registar_atividade(session, st.session_state.username, "Criar Votação", f"Pergunta: {perg}")
+                        st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
 
     sondagens = session.query(Sondagem).order_by(Sondagem.id.desc()).all()
     if sondagens:
@@ -122,13 +139,21 @@ with tab_votos:
                             escolha = st.radio("Sua resposta:", lista_opcoes)
                             if st.form_submit_button("Votar"):
                                 session.add(VotoSondagem(sondagem_id=s.id, condomino_id=st.session_state.condomino_id, resposta=escolha))
-                                session.commit(); st.rerun()
+                                session.commit()
+                                registar_atividade(session, st.session_state.username, "Registar Voto", f"Sondagem ID {s.id}: Escolha - {escolha}")
+                                st.rerun()
 
                 if st.session_state.perfil == "Admin":
                     c_act1, c_act2 = st.columns(2)
-                    if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): s.ativa = not s.ativa; session.commit(); st.rerun()
+                    if c_act1.button("Abrir/Fechar", key=f"alt_{s.id}"): 
+                        s.ativa = not s.ativa; session.commit()
+                        estado_s = "Ativada" if s.ativa else "Encerrada"
+                        registar_atividade(session, st.session_state.username, "Alterar Estado Sondagem", f"Sondagem ID {s.id}: {estado_s}")
+                        st.rerun()
                     if c_act2.button("Apagar Votação", key=f"del_s_{s.id}"):
                         session.query(VotoSondagem).filter_by(sondagem_id=s.id).delete()
-                        session.delete(s); session.commit(); st.rerun()
+                        session.delete(s); session.commit()
+                        registar_atividade(session, st.session_state.username, "Apagar Votação", f"Sondagem ID {s.id}: {s.pergunta}")
+                        st.rerun()
     else: 
         st.info("Não existem votações de momento.")

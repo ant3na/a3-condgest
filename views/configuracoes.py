@@ -16,37 +16,10 @@ if not st.session_state.modo_leitura:
     tab_geral, tab_avisos, tab_seguranca, tab_logs = st.tabs([
         ":material/business: Dados Gerais", 
         ":material/campaign: Quadro de Avisos", 
-        ":material/security: Backup & Reset BD",
+        ":material/security: Backup de Dados & Reset BD",
         ":material/history: Atividades"
     ])
-
-    with tab_logs:
-        with st.container(border=True):
-            st.subheader("📜 Registo de Atividades")
-            st.caption("Últimos 100 registos de atividade no sistema.")
-            
-            # Vai buscar os últimos 100 logs à base de dados
-            logs = session.query(LogAtividade).order_by(LogAtividade.id.desc()).limit(100).all()
-            
-            if logs:
-                df_logs = pd.DataFrame([{
-                    "Data/Hora": l.data_hora,
-                    "Utilizador": l.utilizador,
-                    "Ação": l.acao,
-                    "Detalhes": l.detalhes
-                } for l in logs])
-                
-                st.dataframe(
-                    df_logs, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "Data/Hora": st.column_config.DatetimeColumn("Data/Hora", format="YYYY-MM-DD HH:mm")
-                    }
-                )
-            else:
-                st.info("Ainda não existem atividades registadas no sistema.")
-                
+    
     with tab_geral:
         with st.container(border=True):
             with st.form("form_config"):
@@ -79,7 +52,8 @@ if not st.session_state.modo_leitura:
                     config["AVISO_ATIVO"] = aviso_ativo
                     config["AVISO_GLOBAL"] = aviso_texto
                     guardar_configs(config)
-                    st.session_state.toast = ("Aviso atualizado com sucesso!", "✅")
+                    registar_atividade(session, st.session_state.username, "Atualizar Quadro de Avisos", f"Aviso ativo: {aviso_ativo}")
+                    st.session_state.toast = ("Aviso updated com sucesso!", "✅")
                     st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
                     
     with tab_seguranca:
@@ -111,6 +85,7 @@ if not st.session_state.modo_leitura:
                         conteudo_json_string = arq_import_json.read().decode("utf-8")
                         sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
                         if sucesso:
+                            registar_atividade(session, st.session_state.username, "Restauro de Backup", "Base de dados restaurada com sucesso a partir de ficheiro JSON.")
                             st.success(msg_res)
                             import time
                             time.sleep(2)
@@ -164,10 +139,11 @@ if not st.session_state.modo_leitura:
                                 session.query(Quota).delete()
                                 session.query(Utilizador).delete()
                                 session.query(Condomino).delete()
+                                session.query(LogAtividade).delete()
                                 session.commit()
                                 
                                 if engine.name == "postgresql":
-                                    tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos"]
+                                    tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos", "logs_atividade"]
                                     for tabela in tabelas:
                                         try: session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
                                         except Exception: session.rollback()
@@ -181,3 +157,27 @@ if not st.session_state.modo_leitura:
                             except Exception as e:
                                 session.rollback()
                                 st.error(f"Erro ao tentar limpar: {e}")
+
+    with tab_logs:
+        with st.container(border=True):
+            st.subheader("📜 Histórico de Atividades (Audit Log)")
+            st.caption("Visualização dos últimos 100 registos de eventos e alterações feitas no portal.")
+            
+            logs = session.query(LogAtividade).order_by(LogAtividade.id.desc()).limit(100).all()
+            if logs:
+                df_logs = pd.DataFrame([{
+                    "Data/Hora": l.data_hora,
+                    "Utilizador": l.utilizador,
+                    "Ação": l.acao,
+                    "Detalhes": l.detalhes
+                } for l in logs])
+                st.dataframe(
+                    df_logs, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Data/Hora": st.column_config.DatetimeColumn("Data/Hora", format="YYYY-MM-DD HH:mm:ss")
+                    }
+                )
+            else:
+                st.info("Ainda não existem atividades registadas no sistema.")
