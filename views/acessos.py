@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 from werkzeug.security import generate_password_hash
-
 from db import get_session
 from models import Condomino, Utilizador
-from utils import configurar_sidebar, formatar_username
+from utils import configurar_sidebar, formatar_username, registar_atividade
 
 session = get_session()
 
