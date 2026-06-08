@@ -46,6 +46,7 @@ if st.session_state.perfil == "Admin":
                     if len(condominos_sem_quota) > 0:
                         for c in condominos_sem_quota: session.add(Quota(condomino_id=c.id, mes_ano=mes_str, valor=valor_quota_padrao, paga=False))
                         session.commit(); st.session_state.toast = (f"Quotas de {mes_str} geradas!", "✅"); st.rerun()
+                        registar_atividade(session, st.session_state.username, "Registar Pagamento de Quota", f"Quota de {q.mes_ano} paga pela fração {q.condomino.fracao} no valor de {q.valor}€")
                     else: st.info("Não há quotas em falta.")
             with col2:
                 if st.button(f":material/calendar_month: Gerar para Todo o Ano de {ano_sel}", use_container_width=True, type="primary"):
@@ -57,6 +58,7 @@ if st.session_state.perfil == "Admin":
                                 session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
                                 novas_quotas += 1
                     if novas_quotas > 0: session.commit(); st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
+                        registar_atividade(session, st.session_state.username, "Gerar Quotas Anuais", f"Quotas geradas para o ano de {ano_sel}")
                     else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
                     st.rerun()
 else:
