@@ -4,7 +4,7 @@ from datetime import date
 
 from db import get_session, engine
 from models import Condomino, Movimento, VotoSondagem, Sondagem, Anuncio, Assembleia, Ocorrencia, Fornecedor, Documento, Orcamento, Quota, Utilizador, LogAtividade
-from utils import configurar_sidebar, config, guardar_configs, gerar_snapshot_json, restaurar_snapshot_json
+from utils import configurar_sidebar, config, guardar_configs, gerar_snapshot_json, restaurar_snapshot_json, registar_atividade
 
 session = get_session()
 
@@ -19,7 +19,34 @@ if not st.session_state.modo_leitura:
         ":material/security: Backup & Reset BD",
         ":material/history: Atividades"
     ])
-    
+
+    with tab_logs:
+        with st.container(border=True):
+            st.subheader("📜 Registo de Atividades")
+            st.caption("Últimos 100 registos de atividade no sistema.")
+            
+            # Vai buscar os últimos 100 logs à base de dados
+            logs = session.query(LogAtividade).order_by(LogAtividade.id.desc()).limit(100).all()
+            
+            if logs:
+                df_logs = pd.DataFrame([{
+                    "Data/Hora": l.data_hora,
+                    "Utilizador": l.utilizador,
+                    "Ação": l.acao,
+                    "Detalhes": l.detalhes
+                } for l in logs])
+                
+                st.dataframe(
+                    df_logs, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Data/Hora": st.column_config.DatetimeColumn("Data/Hora", format="YYYY-MM-DD HH:mm")
+                    }
+                )
+            else:
+                st.info("Ainda não existem atividades registadas no sistema.")
+                
     with tab_geral:
         with st.container(border=True):
             with st.form("form_config"):
@@ -37,6 +64,7 @@ if not st.session_state.modo_leitura:
                     config["IBAN_CONDOMINIO"] = iban
                     config["VALOR_MENSAL_FIXO"] = valor_quota
                     guardar_configs(config)
+                    registar_atividade(session, st.session_state.username, "Atualizou Configurações Gerais", "Alterou NOME, NIF, IBAN ou Quota Fixa.")
                     st.session_state.toast = ("Configurações atualizadas!", "✅")
                     st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
                     
