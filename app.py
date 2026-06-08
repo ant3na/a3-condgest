@@ -1,4 +1,5 @@
 import streamlit as st
+print("ESTOU A ARRANCAR O APP.PY!")
 from db import init_db, get_session
 from models import Utilizador
 from werkzeug.security import generate_password_hash
