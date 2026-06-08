@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship
-from datetime import date
+from datetime import date, datetime
 
 Base = declarative_base()
 
@@ -126,3 +126,15 @@ class Anuncio(Base):
     data_criacao = Column(String, default=date.today().strftime("%Y-%m-%d %H:%M"))
     criado_por = Column(String, nullable=False)
     fracao = Column(String, nullable=True)
+
+from datetime import datetime
+
+class Auditoria(Base):
+    __tablename__ = 'auditoria'
+    id = Column(Integer, primary_key=True)
+    # Usamos o timestamp exato do momento da ação
+    data_hora = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    username = Column(String, nullable=False)
+    acao = Column(String, nullable=False)
+    entidade = Column(String, nullable=False)
+    detalhes = Column(String, nullable=False)
