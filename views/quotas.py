@@ -44,7 +44,8 @@ if st.session_state.perfil == "Admin":
             with col1:
                 if st.button(f":material/bolt: Gerar Quotas Apenas de {mes_str}", use_container_width=True):
                     if len(condominos_sem_quota) > 0:
-                        for c in condominos_sem_quota: session.add(Quota(condomino_id=c.id, mes_ano=mes_str, valor=valor_quota_padrao, paga=False)) session.commit(); st.session_state.toast = (f"Quotas de {mes_str} geradas!", "✅"); st.rerun()
+                        for c in condominos_sem_quota: session.add(Quota(condomino_id=c.id, mes_ano=mes_str, valor=valor_quota_padrao, paga=False))
+                        session.commit(); st.session_state.toast = (f"Quotas de {mes_str} geradas!", "✅"); st.rerun()
                     else: st.info("Não há quotas em falta.")
             with col2:
                 if st.button(f":material/calendar_month: Gerar para Todo o Ano de {ano_sel}", use_container_width=True, type="primary"):
@@ -55,8 +56,7 @@ if st.session_state.perfil == "Admin":
                             if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=m_str).first():
                                 session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
                                 novas_quotas += 1
-                    if novas_quotas > 0: session.commit(); 
-                    st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
+                    if novas_quotas > 0: session.commit(); st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
                     else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
                     st.rerun()
 else:
