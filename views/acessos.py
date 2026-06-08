@@ -126,6 +126,7 @@ with tab_perms:
                         u_sel.perm_mural, u_sel.perm_assembleias = val_mur, val_ass
                         u_sel.perm_arquivo, u_sel.perm_fornecedores, u_sel.perm_ocorrencias = val_arq, val_forn, val_oco
                         session.commit()
+                        registar_atividade(session, st.session_state.username, "Atualizar Permissões", f"Permissões alteradas para o utilizador {u_sel.username}")
                         st.session_state.toast = ("Permissões atualizadas com sucesso!", "✅")
                         st.session_state.form_key = st.session_state.get('form_key', 0) + 1
                         st.rerun()
