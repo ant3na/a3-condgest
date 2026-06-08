@@ -160,6 +160,9 @@ if "edit_id" not in st.session_state: st.session_state.edit_id = None
 if "edit_type" not in st.session_state: st.session_state.edit_type = None
 if "form_key" not in st.session_state: st.session_state.form_key = 0
 
+if "mensagens_chat" not in st.session_state: 
+    st.session_state.mensagens_chat = [{"role": "assistant", "content": "Olá! Sou o Assistente Virtual do Condomínio. Como posso ajudar?"}]
+
 def clear_edit():
     st.session_state.edit_id = None
     st.session_state.edit_type = None
@@ -180,7 +183,7 @@ def get_image_base64(path):
     return ""
 
 # ==========================================
-# FUNÇÃO CORE DE AUDITORIA ROTATIVA (MÁX 200 LOGS)
+# FUNÇÃO CORE DE AUDITORIA ROTATIVA
 # ==========================================
 def registar_auditoria(acao, entidade, detalhes):
     if st.session_state.logado and st.session_state.username:
@@ -504,7 +507,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# BARRA LATERAL (LOGO E FILTROS)
+# BARRA LATERAL (LOGO E FILTROS) E CHAT WIDGET
 # ==========================================
 hoje = date.today()
 meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -542,8 +545,51 @@ def configurar_sidebar():
     mes_str = f"{idx_mes:02d}/{ano_sel}" 
     
     st.sidebar.markdown("---")
-    st.sidebar.caption("💡 **Dica:** Altere entre o Modo Claro e Escuro clicando nos **⋮** no canto superior direito > **Settings** > **Theme**.")
     
+    # ----------------------------------------------------
+    # CHATBOT WIDGET (Expansor no fundo da Sidebar)
+    # ----------------------------------------------------
+    if st.session_state.logado:
+        with st.sidebar.expander("💬 Chatbot IA do Condomínio", expanded=False):
+            try:
+                import google.generativeai as genai
+                CHAVE_API = st.secrets.get("GEMINI_API_KEY", "")
+                if not CHAVE_API:
+                    st.warning("⚠️ Chave GEMINI_API_KEY não configurada no secrets.toml.")
+                else:
+                    genai.configure(api_key=CHAVE_API)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    # Interface do chat dentro do expander
+                    c_chat = st.container(height=300)
+                    with c_chat:
+                        for msg in st.session_state.mensagens_chat:
+                            icone = "🤖" if msg["role"] == "assistant" else "👤"
+                            st.markdown(f"**{icone}**: {msg['content']}")
+                    
+                    # Formulário de input (evita as restrições do st.chat_input)
+                    with st.form("form_chat", clear_on_submit=True):
+                        pergunta = st.text_input("A sua mensagem:")
+                        if st.form_submit_button("Enviar Mensagem", use_container_width=True):
+                            if pergunta.strip():
+                                st.session_state.mensagens_chat.append({"role": "user", "content": pergunta})
+                                try:
+                                    anuncios = session.query(Anuncio).order_by(Anuncio.id.desc()).limit(3).all()
+                                    txt_anuncios = "\\n".join([f"- {a.titulo}" for a in anuncios])
+                                    
+                                    contexto = f"És o assistente virtual do {config.get('NOME_CONDOMINIO', 'nosso condomínio')}. O IBAN para pagar quotas é: {config.get('IBAN_CONDOMINIO', 'N/D')}. O valor da quota é de {config.get('VALOR_MENSAL_FIXO', 'N/D')}€. Últimos anúncios do mural: {txt_anuncios}. Sê amigável, direto, conciso e responde em português de Portugal."
+                                    prompt_final = contexto + "\\n\\nPergunta do morador: " + pergunta
+                                    
+                                    resposta = model.generate_content(prompt_final)
+                                    st.session_state.mensagens_chat.append({"role": "assistant", "content": resposta.text})
+                                    registar_auditoria("CONSULTA", "IA", "O utilizador interagiu com o chatbot.")
+                                except Exception as e:
+                                    st.session_state.mensagens_chat.append({"role": "assistant", "content": f"Desculpe, ocorreu um erro técnico: {e}"})
+                                st.rerun()
+            except ImportError:
+                st.error("Execute no terminal: pip install google-generativeai")
+                
+    st.sidebar.caption("💡 Altere para Modo Escuro em **⋮** > **Settings**.")
     return mes_sel, ano_sel, str_inicio, str_fim, mes_str
 
 # ==========================================
@@ -610,7 +656,7 @@ def pagina_login():
                             
             st.markdown("""
             <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5</p>
+                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 3.0</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -842,7 +888,7 @@ def pagina_dashboard():
         with c2:
             with st.container(border=True):
                 st.subheader(f"Receitas / Despesas [{ano_sel}]")
-                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel))).all()]
+                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel)))).all()]
                 dados_grafico.extend([{"Mês": q.data_pagamento[5:7], "Tipo": "Receita", "Valor": q.valor} for q in session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all() if q.data_pagamento])
                 if dados_grafico:
                     df_fin_grouped = pd.DataFrame(dados_grafico).groupby(["Mês", "Tipo"]).sum().reset_index()
@@ -1550,9 +1596,6 @@ def pagina_fornecedores():
     
     tab_diretorio, tab_contratos = st.tabs(["📇 Diretório de Contactos", "📑 Contratos de Manutenção"])
     
-    # ==========================================
-    # TAB 1: DIRETÓRIO DE FORNECEDORES
-    # ==========================================
     with tab_diretorio:
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             title_form = ":material/edit: Editar Fornecedor" if st.session_state.edit_type == "forn" else ":material/person_add: Novo Fornecedor"
@@ -1626,9 +1669,6 @@ def pagina_fornecedores():
                             st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
         else: st.info("Ainda não existem fornecedores registados.")
 
-    # ==========================================
-    # TAB 2: CONTRATOS DE MANUTENÇÃO
-    # ==========================================
     with tab_contratos:
         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
             with st.expander(":material/post_add: Adicionar Novo Contrato"):
@@ -1988,7 +2028,6 @@ def restaurar_snapshot_json(json_str):
         data = json.loads(json_str)
         session.rollback()
         
-        # 1. Limpar Tudo (Reset Suave Prévio)
         session.query(VotoSondagem).delete()
         session.query(Sondagem).delete()
         session.query(Anuncio).delete()
@@ -2005,7 +2044,6 @@ def restaurar_snapshot_json(json_str):
         session.query(Auditoria).delete()
         session.commit()
         
-        # 2. Injeção Ordenada Estrita
         if "condominos" in data:
             for r in data["condominos"]: session.add(Condomino(**r))
             session.commit()
@@ -2028,7 +2066,6 @@ def restaurar_snapshot_json(json_str):
             for r in data["auditoria"]: session.add(Auditoria(**r))
         session.commit()
         
-        # 3. Sincronizar Sequências do PostgreSQL
         if engine.name == 'postgresql':
             from sqlalchemy import text
             tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'contratos', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos', 'auditoria']
