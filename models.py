@@ -127,8 +127,6 @@ class Anuncio(Base):
     criado_por = Column(String, nullable=False)
     fracao = Column(String, nullable=True)
 
-from datetime import datetime
-
 class Auditoria(Base):
     __tablename__ = 'auditoria'
     id = Column(Integer, primary_key=True)
