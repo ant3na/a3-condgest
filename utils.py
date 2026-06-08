@@ -8,7 +8,7 @@ import unicodedata
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
 from sqlalchemy import func, and_, text
 
@@ -481,7 +481,25 @@ def restaurar_snapshot_json(json_str):
     except Exception as e:
         session.rollback()
         return False, f"Falha no restauro da Segurança. Detalhe: {str(e)}"
-    
+
+
+def registar_atividade(sessao_db, username, acao, detalhes=""):
+    try:
+        # Import local se não adicionaste o datetime no topo
+        from datetime import datetime
+        agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        novo_log = LogAtividade(
+            data_hora=agora, 
+            utilizador=username, 
+            acao=acao, 
+            detalhes=detalhes
+        )
+        sessao_db.add(novo_log)
+        sessao_db.commit()
+    except Exception as e:
+        sessao_db.rollback()
+        print(f"Erro ao registar log: {e}")
+
 # ==========================================
 # BARRA LATERAL (LOGO E FILTROS)
 # ==========================================
