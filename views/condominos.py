@@ -51,6 +51,7 @@ if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
                                 novos += 1
                     if novos > 0:
                         session.commit()
+                        registar_atividade(session, st.session_state.username, "Importar Condóminos", f"Importados {novos} novos registos via ficheiro")
                         st.success(f"{novos} frações importadas com sucesso!")
                         st.session_state.form_key = st.session_state.get('form_key', 0) + 1
                     else:
@@ -90,7 +91,9 @@ if not st.session_state.modo_leitura:
                 else:
                     session.add(Condomino(nome=n, fracao=f, nif=nif_input, telefone=t, email=e, permilagem=p))
                     st.session_state.toast = ("Condómino adicionado!", "✅")
-                session.commit(); clear_edit(); st.rerun()
+                session.commit(); 
+                registar_atividade(session, st.session_state.username, "Guardar Condómino", f"Registo guardado para a fração {f} ({n})")
+                clear_edit(); st.rerun()
             if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
 
 if conds:
@@ -109,5 +112,8 @@ if conds:
                 if c_edit.button(":material/edit: Editar Fração", use_container_width=True):
                     st.session_state.edit_id = id_sel; st.session_state.edit_type = "cond"; st.session_state.form_key = st.session_state.get('form_key', 0) + 1; st.rerun()
                 if c_del.button(":material/delete: Apagar Registo", use_container_width=True):
-                    session.delete(cond_obj); session.commit(); st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
+                    session.delete(cond_obj); 
+                    session.commit(); 
+                    registar_atividade(session, st.session_state.username, "Apagar Condómino", f"Registo apagado para a fração {cond_obj.fracao}")
+                    st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
 else: st.info("Ainda não existem condóminos registados.")
