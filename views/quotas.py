@@ -56,7 +56,7 @@ if st.session_state.perfil == "Admin":
                             if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=m_str).first():
                                 session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
                                 novas_quotas += 1
-                    if novas_quotas > 0: session.commit(); st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
+                    if novas_quotas > 0: session.commit(); registar_atividade(session, st.session_state.username, "Registar Pagamento de Quota", f"Quota de {q.mes_ano} paga pela fração {q.condomino.fracao} no valor de {q.valor}€") st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
                     else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
                     st.rerun()
 else:
