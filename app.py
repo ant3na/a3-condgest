@@ -14,7 +14,7 @@ from sqlalchemy import func, and_
 from io import BytesIO
 
 # Importações limpas e completas dos nossos módulos refatorados
-from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, Auditoria
+from models import Base, Condomino, Utilizador, Quota, Movimento, Ocorrencia, Orcamento, Documento, Fornecedor, Assembleia, Sondagem, VotoSondagem, Anuncio, Auditoria, Contrato
 from db import init_db, get_session, engine
 
 # ==========================================
@@ -60,18 +60,15 @@ if REPORTLAB_INSTALLED:
         def draw_page_number(self, page_count):
             self.saveState()
             self.setFont("Helvetica", 9)
-            self.setFillColor(colors.HexColor("#64748b")) # Cinza ardósia elegante
+            self.setFillColor(colors.HexColor("#64748b"))
             
-            # Linha horizontal minimalista de rodapé
             self.setStrokeColor(colors.HexColor("#e2e8f0"))
             self.setLineWidth(0.5)
             self.line(50, 45, 545, 45)
             
-            # Paginação dinâmica ("Página X de Y")
             texto_pagina = f"Página {self._pageNumber} de {page_count}"
             self.drawRightString(545, 30, texto_pagina)
             
-            # Identificador institucional fixo
             self.drawString(50, 30, " A3® Portal do Condomínio")
             self.restoreState()
 
@@ -186,7 +183,6 @@ def get_image_base64(path):
 # FUNÇÃO CORE DE AUDITORIA ROTATIVA (MÁX 200 LOGS)
 # ==========================================
 def registar_auditoria(acao, entidade, detalhes):
-    """Guarda ações na BD e remove registos antigos para manter um limite estrito de 200 logs."""
     if st.session_state.logado and st.session_state.username:
         try:
             novo_log = Auditoria(
@@ -199,7 +195,6 @@ def registar_auditoria(acao, entidade, detalhes):
             session.add(novo_log)
             session.commit()
             
-            # Mecanismo de Limpeza Circular - Mantém rigorosamente as últimas 200 ações
             total_logs = session.query(Auditoria).count()
             if total_logs > 200:
                 logs_a_remover = session.query(Auditoria).order_by(Auditoria.id.asc()).limit(total_logs - 200).all()
@@ -615,7 +610,7 @@ def pagina_login():
                             
             st.markdown("""
             <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.1</p>
+                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -791,7 +786,6 @@ def pagina_acessos():
 
 def pagina_dashboard():
     import plotly.graph_objects as go
-    from datetime import datetime
     
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
@@ -940,9 +934,24 @@ def pagina_dashboard():
                 st.subheader("📅 Agenda & Comunidade")
                 ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
                 sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
+                contratos_todos = session.query(Contrato).all()
                 
                 alertas_encontrados = False
                 
+                if st.session_state.perfil == "Admin" and contratos_todos:
+                    for c in contratos_todos:
+                        try:
+                            d_fim = datetime.strptime(c.data_fim, "%Y-%m-%d").date()
+                            dias_restantes = (d_fim - hoje).days
+                            if dias_restantes < 0:
+                                alertas_encontrados = True
+                                st.error(f"🚨 **Contrato Expirado:** '{c.titulo}' ({c.fornecedor.nome if c.fornecedor else ''}) expirou há {abs(dias_restantes)} dias!")
+                            elif 0 <= dias_restantes <= 30:
+                                alertas_encontrados = True
+                                st.warning(f"⚠️ **Contrato a Expirar:** '{c.titulo}' termina daqui a {dias_restantes} dias ({d_fim.strftime('%d/%m')}).")
+                        except Exception:
+                            pass
+
                 if ass_futuras:
                     alertas_encontrados = True
                     for a in ass_futuras:
@@ -963,7 +972,7 @@ def pagina_dashboard():
                     st.success(f"🗳️ Existem **{sond_ativas} votações ativas** a decorrer no portal dos moradores.")
                     
                 if not alertas_encontrados:
-                    st.info("Sem reuniões agendadas ou votações em curso de momento.")
+                    st.info("Sem avisos urgentes ou reuniões pendentes.")
 
     with tab_fracoes:
         with st.container(border=True):
@@ -1473,7 +1482,7 @@ def pagina_recibos():
                             if st.button(":material/send: Enviar Confirmação Simples", width="stretch"):
                                 if q.condomino.email:
                                     corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
-                                    if enviar_email_real(c.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
+                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
                                 else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
                                 if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
@@ -1537,78 +1546,155 @@ def pagina_documentos():
 
 def pagina_fornecedores():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    st.header(":material/contact_phone: Gestão de Fornecedores")
+    st.header(":material/contact_phone: Fornecedores e Contratos")
     
-    if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-        title_form = ":material/edit: Editar Fornecedor" if st.session_state.edit_type == "forn" else ":material/person_add: Novo Fornecedor"
-        with st.expander(title_form, expanded=(st.session_state.edit_type == "forn")):
-            with st.form("f_forn"):
-                val_n, val_cat, val_t, val_e, val_nif, val_obs, val_resp, val_iban = "", "Geral", "", "", "", "", "", ""
-                if st.session_state.edit_type == "forn":
-                    obj = session.get(Fornecedor, st.session_state.edit_id)
-                    val_n, val_cat, val_t, val_e, val_nif, val_obs = obj.nome, obj.categoria, obj.telefone, obj.email, obj.nif, obj.observacoes
-                    val_resp, val_iban = obj.responsavel, obj.iban
+    tab_diretorio, tab_contratos = st.tabs(["📇 Diretório de Contactos", "📑 Contratos de Manutenção"])
+    
+    # ==========================================
+    # TAB 1: DIRETÓRIO DE FORNECEDORES
+    # ==========================================
+    with tab_diretorio:
+        if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+            title_form = ":material/edit: Editar Fornecedor" if st.session_state.edit_type == "forn" else ":material/person_add: Novo Fornecedor"
+            with st.expander(title_form, expanded=(st.session_state.edit_type == "forn")):
+                with st.form("f_forn"):
+                    val_n, val_cat, val_t, val_e, val_nif, val_obs, val_resp, val_iban = "", "Geral", "", "", "", "", "", ""
+                    if st.session_state.edit_type == "forn":
+                        obj = session.get(Fornecedor, st.session_state.edit_id)
+                        val_n, val_cat, val_t, val_e, val_nif, val_obs = obj.nome, obj.categoria, obj.telefone, obj.email, obj.nif, obj.observacoes
+                        val_resp, val_iban = obj.responsavel, obj.iban
 
-                c_form1, c_form2 = st.columns(2)
-                with c_form1:
-                    n = st.text_input("Nome da Empresa / Profissional *", value=val_n, key=f"f_n_{st.session_state.form_key}")
-                    cat = st.selectbox("Categoria", ["Eletricista", "Canalizador", "Limpeza", "Elevadores", "Seguros", "Geral", "Outro"], index=["Eletricista", "Canalizador", "Limpeza", "Elevadores", "Seguros", "Geral", "Outro"].index(val_cat) if val_cat else 5, key=f"f_cat_{st.session_state.form_key}")
-                    resp = st.text_input("Responsável de Contacto", value=val_resp, key=f"f_resp_{st.session_state.form_key}")
-                    t = st.text_input("Telefone", value=val_t, key=f"f_t_{st.session_state.form_key}")
-                with c_form2:
-                    e = st.text_input("Email", value=val_e, key=f"f_e_{st.session_state.form_key}")
-                    nif_input = st.text_input("NIF", value=val_nif, key=f"f_nif_{st.session_state.form_key}")
-                    iban_input = st.text_input("IBAN", value=val_iban, key=f"f_iban_{st.session_state.form_key}")
-                    obs = st.text_area("Observações", value=val_obs, key=f"f_obs_{st.session_state.form_key}")
-                
-                c1, c2 = st.columns(2)
-                if c1.form_submit_button("Guardar Fornecedor"):
-                    if not n.strip(): st.error("O nome é obrigatório.")
-                    else:
-                        if st.session_state.edit_type == "forn":
-                            obj.nome, obj.categoria, obj.telefone, obj.email, obj.nif, obj.observacoes = n, cat, t, e, nif_input, obs
-                            obj.responsavel, obj.iban = resp, iban_input
-                            session.commit()
-                            registar_auditoria("ATUALIZAR", "Fornecedores", f"Editou os dados cadastrais do fornecedor '{n}'.")
-                            st.session_state.toast = ("Fornecedor updated!", "✏️")
+                    c_form1, c_form2 = st.columns(2)
+                    with c_form1:
+                        n = st.text_input("Nome da Empresa / Profissional *", value=val_n, key=f"f_n_{st.session_state.form_key}")
+                        cat = st.selectbox("Categoria", ["Eletricista", "Canalizador", "Limpeza", "Elevadores", "Seguros", "Geral", "Outro"], index=["Eletricista", "Canalizador", "Limpeza", "Elevadores", "Seguros", "Geral", "Outro"].index(val_cat) if val_cat else 5, key=f"f_cat_{st.session_state.form_key}")
+                        resp = st.text_input("Responsável de Contacto", value=val_resp, key=f"f_resp_{st.session_state.form_key}")
+                        t = st.text_input("Telefone", value=val_t, key=f"f_t_{st.session_state.form_key}")
+                    with c_form2:
+                        e = st.text_input("Email", value=val_e, key=f"f_e_{st.session_state.form_key}")
+                        nif_input = st.text_input("NIF", value=val_nif, key=f"f_nif_{st.session_state.form_key}")
+                        iban_input = st.text_input("IBAN", value=val_iban, key=f"f_iban_{st.session_state.form_key}")
+                        obs = st.text_area("Observações", value=val_obs, key=f"f_obs_{st.session_state.form_key}")
+                    
+                    c1, c2 = st.columns(2)
+                    if c1.form_submit_button("Guardar Fornecedor"):
+                        if not n.strip(): st.error("O nome é obrigatório.")
                         else:
-                            session.add(Fornecedor(nome=n, categoria=cat, telefone=t, email=e, nif=nif_input, observacoes=obs, responsavel=resp, iban=iban_input))
-                            session.commit()
-                            registar_auditoria("CRIAR", "Fornecedores", f"Adicionou um novo fornecedor '{n}' ({cat}).")
-                            st.session_state.toast = ("Fornecedor adicionado!", "✅")
-                        clear_edit(); st.rerun()
-                if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
+                            if st.session_state.edit_type == "forn":
+                                obj.nome, obj.categoria, obj.telefone, obj.email, obj.nif, obj.observacoes = n, cat, t, e, nif_input, obs
+                                obj.responsavel, obj.iban = resp, iban_input
+                                session.commit()
+                                registar_auditoria("ATUALIZAR", "Fornecedores", f"Editou os dados cadastrais do fornecedor '{n}'.")
+                                st.session_state.toast = ("Fornecedor atualizado!", "✏️")
+                            else:
+                                session.add(Fornecedor(nome=n, categoria=cat, telefone=t, email=e, nif=nif_input, observacoes=obs, responsavel=resp, iban=iban_input))
+                                session.commit()
+                                registar_auditoria("CRIAR", "Fornecedores", f"Adicionou um novo fornecedor '{n}' ({cat}).")
+                                st.session_state.toast = ("Fornecedor adicionado!", "✅")
+                            clear_edit(); st.rerun()
+                    if c2.form_submit_button("Cancelar"): clear_edit(); st.rerun()
 
-    fornecedores = session.query(Fornecedor).all()
-    if fornecedores:
-        with st.container(border=True):
-            df_export = pd.DataFrame([{"ID": f.id, "Categoria": f.categoria, "Nome": f.nome, "Telefone": f.telefone, "Email": f.email} for f in fornecedores])
-            evento = st.dataframe(df_export, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
-        
-        if evento.selection.rows:
-            st.markdown("<br>", unsafe_allow_html=True)
+        fornecedores = session.query(Fornecedor).all()
+        if fornecedores:
             with st.container(border=True):
-                id_sel = int(df_export.iloc[evento.selection.rows[0]]["ID"])
-                forn_obj = session.get(Fornecedor, id_sel)
-                c_info, c_edit, c_del = st.columns([2, 1, 1])
-                c_info.info(f":material/push_pin: **{forn_obj.nome}** ({forn_obj.categoria})")
-                detalhes = f"**Responsável:** {forn_obj.responsavel if forn_obj.responsavel else 'N/D'} | "
-                detalhes += f"**Telefone:** {forn_obj.telefone if forn_obj.telefone else 'N/D'} | "
-                detalhes += f"**Email:** {forn_obj.email if forn_obj.email else 'N/D'}\n\n"
-                detalhes += f"**NIF:** {forn_obj.nif if forn_obj.nif else 'N/D'} | "
-                detalhes += f"**IBAN:** {forn_obj.iban if forn_obj.iban else 'N/D'}\n\n"
-                detalhes += f"**Observações:** {forn_obj.observacoes if forn_obj.observacoes else '-'}"
-                c_info.write(detalhes)
-                
-                if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
-                    if c_edit.button(":material/edit: Editar", width="stretch"):
-                        st.session_state.edit_id = id_sel; st.session_state.edit_type = "forn"; st.session_state.form_key += 1; st.rerun()
-                    if c_del.button(":material/delete: Apagar", width="stretch"):
-                        f_nome = forn_obj.nome
-                        session.delete(forn_obj); session.commit()
-                        registar_auditoria("APAGAR", "Fornecedores", f"Removeu o fornecedor '{f_nome}' do portal.")
-                        st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
-    else: st.info("Ainda não existem fornecedores registados.")
+                df_export = pd.DataFrame([{"ID": f.id, "Categoria": f.categoria, "Nome": f.nome, "Telefone": f.telefone, "Email": f.email} for f in fornecedores])
+                evento = st.dataframe(df_export, width="stretch", hide_index=True, column_config={"ID": None}, on_select="rerun", selection_mode="single-row")
+            
+            if evento.selection.rows:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    id_sel = int(df_export.iloc[evento.selection.rows[0]]["ID"])
+                    forn_obj = session.get(Fornecedor, id_sel)
+                    c_info, c_edit, c_del = st.columns([2, 1, 1])
+                    c_info.info(f":material/push_pin: **{forn_obj.nome}** ({forn_obj.categoria})")
+                    detalhes = f"**Responsável:** {forn_obj.responsavel if forn_obj.responsavel else 'N/D'} | "
+                    detalhes += f"**Telefone:** {forn_obj.telefone if forn_obj.telefone else 'N/D'} | "
+                    detalhes += f"**Email:** {forn_obj.email if forn_obj.email else 'N/D'}\n\n"
+                    detalhes += f"**NIF:** {forn_obj.nif if forn_obj.nif else 'N/D'} | "
+                    detalhes += f"**IBAN:** {forn_obj.iban if forn_obj.iban else 'N/D'}\n\n"
+                    detalhes += f"**Observações:** {forn_obj.observacoes if forn_obj.observacoes else '-'}"
+                    c_info.write(detalhes)
+                    
+                    if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+                        if c_edit.button(":material/edit: Editar", width="stretch"):
+                            st.session_state.edit_id = id_sel; st.session_state.edit_type = "forn"; st.session_state.form_key += 1; st.rerun()
+                        if c_del.button(":material/delete: Apagar", width="stretch"):
+                            f_nome = forn_obj.nome
+                            session.query(Contrato).filter_by(fornecedor_id=id_sel).delete()
+                            session.delete(forn_obj); session.commit()
+                            registar_auditoria("APAGAR", "Fornecedores", f"Removeu o fornecedor '{f_nome}' e os respetivos contratos.")
+                            st.session_state.toast = ("Contacto apagado!", "🗑️"); st.rerun()
+        else: st.info("Ainda não existem fornecedores registados.")
+
+    # ==========================================
+    # TAB 2: CONTRATOS DE MANUTENÇÃO
+    # ==========================================
+    with tab_contratos:
+        if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+            with st.expander(":material/post_add: Adicionar Novo Contrato"):
+                fornecedores_ativos = session.query(Fornecedor).all()
+                if not fornecedores_ativos:
+                    st.warning("Tem de adicionar um Fornecedor antes de criar contratos.")
+                else:
+                    with st.form("form_contrato"):
+                        opcoes_forn = {f"{f.nome} ({f.categoria})": f.id for f in fornecedores_ativos}
+                        forn_selecionado = st.selectbox("Fornecedor Associado *", list(opcoes_forn.keys()))
+                        titulo_contrato = st.text_input("Título / Referência do Contrato *")
+                        
+                        c_datas1, c_datas2 = st.columns(2)
+                        with c_datas1: d_inicio = st.date_input("Data de Início", value=hoje)
+                        with c_datas2: d_fim = st.date_input("Data de Fim (Expiração) *", value=hoje)
+                        
+                        valor_anual = st.number_input("Valor Anual (€)", min_value=0.0, format="%.2f")
+                        
+                        if st.form_submit_button("Guardar Contrato"):
+                            if not titulo_contrato.strip():
+                                st.error("O título do contrato é obrigatório.")
+                            elif d_fim <= d_inicio:
+                                st.error("A Data de Fim tem de ser posterior à Data de Início.")
+                            else:
+                                id_f = opcoes_forn[forn_selecionado]
+                                novo_contrato = Contrato(fornecedor_id=id_f, titulo=titulo_contrato, data_inicio=d_inicio.strftime("%Y-%m-%d"), data_fim=d_fim.strftime("%Y-%m-%d"), valor_anual=valor_anual)
+                                session.add(novo_contrato)
+                                session.commit()
+                                registar_auditoria("CRIAR", "Contratos", f"Registou um novo contrato '{titulo_contrato}'.")
+                                st.session_state.toast = ("Contrato registado!", "✅")
+                                st.rerun()
+
+        contratos = session.query(Contrato).order_by(Contrato.data_fim.asc()).all()
+        if contratos:
+            st.write("Lista de contratos ativos e as suas datas de expiração.")
+            with st.container(border=True):
+                lista_tabela = []
+                for c in contratos:
+                    try:
+                        dias = (datetime.strptime(c.data_fim, "%Y-%m-%d").date() - hoje).days
+                        if dias < 0: estado = "🔴 Expirado"
+                        elif dias <= 30: estado = "🟡 Expira Brevemente"
+                        else: estado = "🟢 Ativo"
+                    except: estado = "⚪ Desconhecido"
+                    
+                    lista_tabela.append({
+                        "ID": c.id, "Estado": estado, "Fornecedor": c.fornecedor.nome if c.fornecedor else "N/D", 
+                        "Título": c.titulo, "Expira a": c.data_fim, "Valor Anual": c.valor_anual
+                    })
+                    
+                df_contratos = pd.DataFrame(lista_tabela)
+                ev_contrato = st.dataframe(df_contratos, width="stretch", hide_index=True, column_config={"ID": None, "Valor Anual": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
+            
+            if ev_contrato.selection.rows and st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    id_c = int(df_contratos.iloc[ev_contrato.selection.rows[0]]["ID"])
+                    c_obj = session.get(Contrato, id_c)
+                    c_txt, c_btn = st.columns([4, 1])
+                    c_txt.info(f"Selecionado: **{c_obj.titulo}** (Expira: {c_obj.data_fim})")
+                    if c_btn.button("🗑️ Apagar Contrato", width="stretch"):
+                        c_tit = c_obj.titulo
+                        session.delete(c_obj); session.commit()
+                        registar_auditoria("APAGAR", "Contratos", f"Apagou o registo do contrato '{c_tit}'.")
+                        st.rerun()
+        else: st.info("Não existem contratos de momento.")
 
 def pagina_ocorrencias():
     import time
@@ -1884,8 +1970,9 @@ def gerar_snapshot_json():
     models_to_export = {
         "condominos": Condomino, "utilizadores": Utilizador, "orcamentos": Orcamento,
         "movimentos": Movimento, "quotas": Quota, "ocorrencias": Ocorrencia,
-        "documentos": Documento, "fornecedores": Fornecedor, "assembleias": Assembleia,
-        "sondagens": Sondagem, "votos_sondagem": VotoSondagem, "anuncios": Anuncio, "auditoria": Auditoria
+        "documentos": Documento, "fornecedores": Fornecedor, "contratos": Contrato,
+        "assembleias": Assembleia, "sondagens": Sondagem, "votos_sondagem": VotoSondagem, 
+        "anuncios": Anuncio, "auditoria": Auditoria
     }
     for key, model in models_to_export.items():
         rows = session.query(model).all()
@@ -1907,6 +1994,7 @@ def restaurar_snapshot_json(json_str):
         session.query(Anuncio).delete()
         session.query(Assembleia).delete()
         session.query(Ocorrencia).delete()
+        session.query(Contrato).delete()
         session.query(Fornecedor).delete()
         session.query(Documento).delete()
         session.query(Movimento).delete()
@@ -1925,7 +2013,7 @@ def restaurar_snapshot_json(json_str):
         tabelas_fase2 = {
             "utilizadores": Utilizador, "orcamentos": Orcamento, "movimentos": Movimento,
             "quotas": Quota, "ocorrencias": Ocorrencia, "documentos": Documento,
-            "fornecedores": Fornecedor, "assembleias": Assembleia, "sondagens": Sondagem
+            "fornecedores": Fornecedor, "contratos": Contrato, "assembleias": Assembleia, "sondagens": Sondagem
         }
         for key, model in tabelas_fase2.items():
             if key in data:
@@ -1943,7 +2031,7 @@ def restaurar_snapshot_json(json_str):
         # 3. Sincronizar Sequências do PostgreSQL
         if engine.name == 'postgresql':
             from sqlalchemy import text
-            tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos', 'auditoria']
+            tabelas_seq = ['votos_sondagem', 'sondagens', 'anuncios', 'assembleias', 'ocorrencias', 'contratos', 'fornecedores', 'documentos', 'movimentos', 'orcamentos', 'quotas', 'utilizadores', 'condominos', 'auditoria']
             for tabela in tabelas_seq:
                 try:
                     max_id = session.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {tabela};")).scalar()
@@ -1965,7 +2053,7 @@ def pagina_configuracoes():
             ":material/business: Dados Gerais", 
             ":material/campaign: Quadro de Avisos", 
             ":material/security: Backup & Reset BD",
-            ":material/history: Logs de Auditoria" # <- NOVA TAB ADICIONADA
+            ":material/history: Logs de Auditoria"
         ])
         
         with tab_geral:
@@ -2079,6 +2167,7 @@ def pagina_configuracoes():
                                     session.query(Anuncio).delete()
                                     session.query(Assembleia).delete()
                                     session.query(Ocorrencia).delete()
+                                    session.query(Contrato).delete()
                                     session.query(Fornecedor).delete()
                                     session.query(Documento).delete()
                                     session.query(Movimento).delete()
@@ -2090,7 +2179,7 @@ def pagina_configuracoes():
                                     session.commit()
                                     
                                     if engine.name == "postgresql":
-                                        tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos", "auditoria"]
+                                        tabelas = ["votos_sondagem", "sondagens", "anuncios", "assembleias", "ocorrencias", "contratos", "fornecedores", "documentos", "movimentos", "orcamentos", "quotas", "utilizadores", "condominos", "auditoria"]
                                         for tabela in tabelas:
                                             try: session.execute(text(f"ALTER SEQUENCE {tabela}_id_seq RESTART WITH 1;"))
                                             except Exception: session.rollback()
@@ -2105,7 +2194,6 @@ def pagina_configuracoes():
                                     session.rollback()
                                     st.error(f"Erro ao tentar limpar: {e}")
 
-        # --- NOVA TAB DE VISUALIZAÇÃO DE AUDITORIA ---
         with tab_auditoria:
             st.subheader("📋 Rasto de Auditoria do Sistema")
             st.write("Exibição em tempo real das ações e eventos ocorridos na aplicação (limite circular de 200 registos históricos).")
@@ -2145,7 +2233,7 @@ else:
                 st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"),
                 st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"),
                 st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"),
-                st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"),
+                st.Page(pagina_fornecedores, title="Fornecedores e Contratos", icon=":material/contact_phone:"),
                 st.Page(pagina_ocorrencias, title="Ocorrências", icon=":material/build:")
             ],
             "SISTEMA": [
