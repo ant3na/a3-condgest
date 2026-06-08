@@ -136,3 +136,13 @@ class Auditoria(Base):
     acao = Column(String, nullable=False)
     entidade = Column(String, nullable=False)
     detalhes = Column(String, nullable=False)
+
+class Contrato(Base):
+    __tablename__ = 'contratos'
+    id = Column(Integer, primary_key=True)
+    fornecedor_id = Column(Integer, ForeignKey('fornecedores.id'), nullable=False)
+    titulo = Column(String, nullable=False)
+    data_inicio = Column(String, nullable=False)
+    data_fim = Column(String, nullable=False)
+    valor_anual = Column(Float, default=0.0)
+    fornecedor = relationship("Fornecedor", backref="contratos")
