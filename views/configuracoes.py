@@ -6,28 +6,7 @@ from db import get_session, engine
 from models import Condomino, Movimento, VotoSondagem, Sondagem, Anuncio, Assembleia, Ocorrencia, Fornecedor, Documento, Orcamento, Quota, Utilizador
 from utils import configurar_sidebar, config, guardar_configs, gerar_snapshot_json, restaurar_snapshot_json
 from utils import gerar_backup_unificado_zip
-
-session = get_session()
-
-st.title("⚙️ Configurações do Sistema")
-st.markdown("Gerencie os parâmetros globais, utilizadores e cópias de segurança do portal.")
-
-# Criação de separadores organizados para a tua view
-tab_geral, tab_utilizadores, tab_seguranca = st.tabs([
-    "ℹ️ Geral", 
-    "👥 Gestão de Acessos", 
-    "🔒 Cópia de Segurança (Backup)"
-])
-
-# --- SEPARADOR 1: GERAL ---
-with tab_geral:
-    st.subheader("Informações do Portal")
-    st.write("A aplicação está a correr com sucesso na infraestrutura privada (VPS).")
-    with st.container(border=True):
-        st.markdown("**Versão do Sistema:** 2.0 (Arquitetura Modular)")
-        st.markdown("**Armazenamento Local:** Ativo (Pasta `/uploads` persistente)")
-        st.markdown("**Ligação Cloud Banco de Dados:** Ativa (Supabase PostgreSQL)")
-            
+          
 session = get_session()
 
 mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
