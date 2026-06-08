@@ -551,7 +551,7 @@ def configurar_sidebar():
     # CHATBOT WIDGET (Expansor no fundo da Sidebar)
     # ----------------------------------------------------
     if st.session_state.logado:
-        with st.sidebar.expander("💬 Chatbot IA do Condomínio", expanded=False):
+        with st.sidebar.expander("💬 Chatbot IA", expanded=False):
             try:
                 import google.generativeai as genai
                 CHAVE_API = st.secrets.get("GEMINI_API_KEY", "")
@@ -590,7 +590,7 @@ def configurar_sidebar():
             except ImportError:
                 st.error("Execute no terminal: pip install google-generativeai")
                 
-    st.sidebar.caption("💡 Altere para Modo Escuro em **⋮** > **Settings**.")
+    st.sidebar.caption("💡 Espera! **⋮** > **Settings**.")
     return mes_sel, ano_sel, str_inicio, str_fim, mes_str
 
 # ==========================================
