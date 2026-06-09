@@ -579,33 +579,9 @@ def configurar_sidebar():
 def pagina_login():
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    col_imagem, col_form = st.columns([1.3, 1], gap="large")
-    
-    with col_imagem:
-        # Só exibe a imagem se o ficheiro físico existir localmente
-        if os.path.exists("bg_login.png"):
-            st.image("bg_login.png", use_container_width=True)
-            
-        # Puxa o título diretamente das configurações guardadas pelo Admin
-        titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
-        
-        # Espaçamento superior ligeiramente maior se não houver imagem para equilibrar o design
-        margin_top = "10px" if os.path.exists("bg_login.png") else "60px"
-        
-        st.markdown(f"""
-        <div style='margin-top: {margin_top}; padding-left: 5px;'>
-            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
-            <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_form:
-        if not WERKZEUG_INSTALLED:
-            st.error("⚠️ Erro Crítico: A biblioteca 'werkzeug' não está instalada.")
-            return
-            
+    # Subfunção para renderizar o formulário de forma idêntica em ambos os layouts
+    def render_formulario_core():
         with st.container(border=True):
-            # Só exibe o logótipo se o ficheiro físico existir localmente
             if os.path.exists("logo.png"):
                 col_esp, col_img, col_esp2 = st.columns([1, 1.5, 1])
                 with col_img: st.image("logo.png", use_container_width=True)
@@ -663,6 +639,38 @@ def pagina_login():
             <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
         </div>
         """, unsafe_allow_html=True)
+
+    # --- CONTROLO DINÂMICO DE LAYOUT ---
+    has_bg = os.path.exists("bg_login.png")
+    titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
+
+    if has_bg:
+        # Layout 1: Ecrã Dividido (Split Screen) com imagem à esquerda
+        col_imagem, col_side = st.columns([1.4, 1], gap="large")
+        with col_imagem:
+            st.image("bg_login.png", use_container_width=True)
+            st.markdown(f"""
+            <div style='margin-top: 10px; padding-left: 5px;'>
+                <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
+                <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_side:
+            # Subcolunas internas para encolher ligeiramente a caixa de login (torna-a mais compacta)
+            _, col_form_ajustado, _ = st.columns([0.05, 0.9, 0.05])
+            with col_form_ajustado:
+                render_formulario_core()
+    else:
+        # Layout 2: Ecrã Minimalista 100% Centralizado e Quadro de Login mais pequeno
+        col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
+        with col_centro:
+            st.markdown(f"""
+            <div style='text-align: center; margin-bottom: 25px; margin-top: 40px;'>
+                <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
+                <p style='color: #64748b; font-size: 15px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            render_formulario_core()
         
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
