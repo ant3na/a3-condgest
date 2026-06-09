@@ -582,14 +582,12 @@ def pagina_login():
 
     # --- CSS DINÂMICO E EXCLUSIVO DA PÁGINA DE LOGIN ---
     if has_bg:
-        # Converte a imagem local para Base64 para injetar no CSS de fundo
         bg_base64 = get_image_base64("bg_login.png")
         st.markdown(f"""
         <style>
             [data-testid="stHeader"] {{
                 display: none;
             }}
-            /* Define a imagem estendida a 100% de largura e altura sem scroll */
             .stApp {{
                 background-image: url("data:image/png;base64,{bg_base64}");
                 background-size: cover;
@@ -598,33 +596,32 @@ def pagina_login():
                 background-attachment: fixed;
             }}
             .block-container {{
-                padding-top: 4rem !important;
+                padding-top: 2rem !important; /* Ligeiramente reduzido para aproximar do topo */
                 padding-bottom: 0rem !important;
             }}
-            /* Torna a caixa de login ligeiramente translúcida com efeito blur (vidro fosco) */
             div[data-testid="stVerticalBlockBorderWrapper"] {{
                 background-color: rgba(255, 255, 255, 0.96) !important;
                 backdrop-filter: blur(6px);
                 border: 1px solid rgba(255, 255, 255, 0.2) !important;
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.2) !important;
+                box-shadow: 0px 0px 100px 60px rgba(0, 0, 0, 0.6) !important;
             }}
         </style>
         """, unsafe_allow_html=True)
     else:
-        # CSS para o modo minimalista simples (sem imagem de fundo)
+        # CSS para o modo minimalista simples
         st.markdown("""
         <style>
             [data-testid="stHeader"] {
                 display: none;
             }
             .block-container {
-                padding-top: 4rem !important;
+                padding-top: 1rem !important; /* <--- ALTERADO AQUI: Reduzido de 4rem para 1rem para cortar o espaço em branco */
                 padding-bottom: 0rem !important;
             }
         </style>
         """, unsafe_allow_html=True)
 
-    # Subfunção interna para renderizar o formulário compacto e centralizado
+    # Subfunção interna para renderizar o formulário
     def render_formulario_core():
         with st.container(border=True):
             if os.path.exists("logo.png"):
@@ -681,7 +678,7 @@ def pagina_login():
                             
         st.markdown("""
         <div style='text-align: center; margin-top: 15px;'>
-            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
+            <p style='color: #94a3b8; font-size: 11px; text-shadow: none;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -689,11 +686,10 @@ def pagina_login():
     col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
     
     with col_centro:
-        # Controlo de cores e sombras do texto baseando-se na existência ou não do fundo gráfico
         if has_bg:
             text_color_title = "#ffffff"
             text_color_subtitle = "#f1f5f9"
-            shadow_style = "text-shadow: 0px 2px 10px rgba(0, 0, 0, 0.85);"
+            shadow_style = "text-shadow: 0px 2px 15px rgba(0,0,0,0.8), 0px 0px 30px rgba(0,0,0,0.9);"
         else:
             text_color_title = "#1e293b"
             text_color_subtitle = "#64748b"
