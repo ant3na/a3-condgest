@@ -87,6 +87,7 @@ def carregar_configs():
         "MORADA_CONDOMINIO": "2950-562 Quinta do Anjo",
         "NIF_CONDOMINIO": "901571253",
         "IBAN_CONDOMINIO": "PT50 0018 000801049161020 73",
+        "TITULO_LOGIN": "A3® Portal do Condomínio",
         "VALOR_MENSAL_FIXO": 50.00,
         "AVISO_ATIVO": False,
         "AVISO_GLOBAL": ""
@@ -578,35 +579,21 @@ def configurar_sidebar():
 def pagina_login():
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # Criar duas colunas para o efeito "Split Screen" (Esquerda Imagem, Direita Form)
     col_imagem, col_form = st.columns([1.3, 1], gap="large")
     
     with col_imagem:
-        # Agrupar a personalização num menu expansível discreto
-        with st.expander("⚙️ Personalizar Ecrã de Login"):
-            titulo_escolhido = st.text_input(
-                "Título do ecrã:", 
-                value="A3® Portal do Condomínio", 
-                key="login_titulo_customizado"
-            )
-            nova_imagem = st.file_uploader("Carregar nova imagem de fundo", type=["jpg", "jpeg", "png"])
-            
-            # Se for feito o upload, guarda o ficheiro localmente
-            if nova_imagem is not None:
-                with open("bg_login.png", "wb") as f:
-                    f.write(nova_imagem.getbuffer())
-                st.success("Imagem atualizada com sucesso! A página vai recarregar.")
-        
-        # Exibir a imagem de fundo: tenta ler a local, se não existir mostra uma dica
+        # Exibe a imagem de fundo local. Se não existir, usa uma imagem premium por defeito
         if os.path.exists("bg_login.png"):
             st.image("bg_login.png", use_container_width=True)
         else:
-            st.info("🖼️ O ecrã está sem imagem. Abra o menu 'Personalizar Ecrã de Login' acima para carregar a sua fotografia do prédio.")
+            st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
             
-        # Mensagem dinâmica com o título escolhido
+        # Puxa o título diretamente das configurações guardadas pelo Admin
+        titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
+        
         st.markdown(f"""
         <div style='margin-top: 10px; padding-left: 5px;'>
-            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_escolhido}</h1>
+            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
             <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -647,7 +634,6 @@ def pagina_login():
                             st.session_state.perfil = utilizador_db.perfil
                             st.session_state.condomino_id = utilizador_db.condomino_id
                             
-                            # Carregar Permissões
                             st.session_state.perm_dashboard = utilizador_db.perm_dashboard
                             st.session_state.perm_condominos = utilizador_db.perm_condominos
                             st.session_state.perm_quotas = utilizador_db.perm_quotas
@@ -672,9 +658,10 @@ def pagina_login():
                             
         st.markdown("""
         <div style='text-align: center; margin-top: 15px;'>
-            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
+            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.6 Premium</p>
         </div>
         """, unsafe_allow_html=True)
+        
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
@@ -2236,20 +2223,56 @@ def pagina_configuracoes():
                 with st.form("form_config"):
                     st.subheader("Configurações do Condomínio")
                     nome = st.text_input("Nome do Condomínio", value=config.get("NOME_CONDOMINIO", ""), key=f"cfg_n_{st.session_state.form_key}")
+                    titulo_log = st.text_input("Título no Ecrã de Login", value=config.get("TITULO_LOGIN", "A3® Portal do Condomínio"), key=f"cfg_tl_{st.session_state.form_key}")
                     morada = st.text_input("Morada", value=config.get("MORADA_CONDOMINIO", ""), key=f"cfg_m_{st.session_state.form_key}")
                     nif = st.text_input("NIF", value=config.get("NIF_CONDOMINIO", ""), key=f"cfg_nif_{st.session_state.form_key}")
                     iban = st.text_input("IBAN para Pagamentos", value=config.get("IBAN_CONDOMINIO", ""), key=f"cfg_ib_{st.session_state.form_key}")
                     valor_quota = st.number_input("Valor Padrão da Quota (€)", value=config.get("VALOR_MENSAL_FIXO", 50.0), min_value=0.0, key=f"cfg_v_{st.session_state.form_key}")
+                    
                     if st.form_submit_button("Guardar Configurações"):
                         config["NOME_CONDOMINIO"] = nome
+                        config["TITULO_LOGIN"] = titulo_log
                         config["MORADA_CONDOMINIO"] = morada
                         config["NIF_CONDOMINIO"] = nif
                         config["IBAN_CONDOMINIO"] = iban
                         config["VALOR_MENSAL_FIXO"] = valor_quota
                         guardar_configs(config)
-                        registar_auditoria("ATUALIZAR", "Configurações", "Atualizou as informações administrativas basilares do condomínio (IBAN, Nome, NIF).")
-                        st.session_state.toast = ("Configurações updated!", "✅")
+                        registar_auditoria("ATUALIZAR", "Configurações", "Atualizou as informações administrativas basilares e identidade visual do login.")
+                        st.session_state.toast = ("Configurações atualizadas!", "✅")
                         st.session_state.form_key += 1; st.rerun()
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # --- NOVO PAINEL DE BRANDING APENAS PARA O ADMIN DENTRO DO SISTEMA ---
+            with st.container(border=True):
+                st.subheader("🎨 Identidade Visual & Branding")
+                st.write("Faça a gestão das imagens de marca do portal de condomínio.")
+                
+                c_logo, c_bg = st.columns(2)
+                
+                with c_logo:
+                    st.markdown("**Logótipo Principal (`logo.png`)**")
+                    if os.path.exists("logo.png"):
+                        st.image("logo.png", width=120)
+                    up_logo = st.file_uploader("Substituir logótipo", type=["png", "jpg", "jpeg"], key="cfg_up_logo")
+                    if up_logo is not None:
+                        if st.button("Aplicar Novo Logótipo", width="stretch", type="primary"):
+                            with open("logo.png", "wb") as f:
+                                f.write(up_logo.getbuffer())
+                            registar_auditoria("ATUALIZAR", "Configurações", "Alterou o logótipo oficial do sistema.")
+                            st.rerun()
+                            
+                with c_bg:
+                    st.markdown("**Imagem do Fundo de Login (`bg_login.png`)**")
+                    if os.path.exists("bg_login.png"):
+                        st.image("bg_login.png", width=180)
+                    up_bg = st.file_uploader("Substituir imagem de login", type=["png", "jpg", "jpeg"], key="cfg_up_bg")
+                    if up_bg is not None:
+                        if st.button("Aplicar Novo Fundo de Login", width="stretch", type="primary"):
+                            with open("bg_login.png", "wb") as f:
+                                f.write(up_bg.getbuffer())
+                            registar_auditoria("ATUALIZAR", "Configurações", "Alterou a imagem de fundo do ecrã de login.")
+                            st.rerun()
                         
         with tab_avisos:
             with st.container(border=True):
