@@ -497,9 +497,35 @@ def gerar_pdf_ata(a):
 # ==========================================
 st.markdown("""
 <style>
-    div[data-testid="metric-container"] { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 5% 5% 5% 10%; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    div[data-testid="stVerticalBlockBorderWrapper"] { border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; padding: 8px; }
-    div[data-testid="stAlert"] { border-radius: 8px; }
+    /* Estilização dos Cartões de Métrica */
+    div[data-testid="metric-container"] {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+        border-color: #cbd5e1;
+    }
+    
+    div[data-testid="stVerticalBlockBorderWrapper"] { 
+        border-radius: 12px; 
+        background-color: #ffffff; 
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); 
+        border: 1px solid #e2e8f0; 
+        padding: 8px; 
+    }
+    
+    /* Afinar os cantos dos alertas (sucessos, erros, infos) */
+    div[data-testid="stAlert"] { 
+        border-radius: 10px; 
+        border: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -657,10 +683,23 @@ def pagina_dashboard_morador():
     with st.container(border=True):
         st.write("### :material/receipt_long: A sua Conta Corrente")
         quotas = session.query(Quota).filter_by(condomino_id=cond.id).order_by(Quota.mes_ano.desc()).all()
+        
         if quotas:
-            df_q = pd.DataFrame([{"Referência": q.mes_ano, "Valor": q.valor, "Estado": "🟢 Pago" if q.paga else "🔴 Em Dívida", "Data Pagamento": q.data_pagamento if q.paga else "-"} for q in quotas])
-            st.dataframe(df_q, width="stretch", hide_index=True, column_config={"Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")})
-        else: st.info("Ainda não existem registos na sua conta.")
+            for q in quotas:
+                with st.container(border=True):
+                    col_info, col_valor, col_status = st.columns([2, 1, 1])
+                    with col_info:
+                        st.markdown(f"**Referência:** {q.mes_ano}")
+                        st.caption(f"Data de Pagamento: {q.data_pagamento if q.paga else '—'}")
+                    with col_valor:
+                        st.markdown(f"<h4 style='margin:0; color:#1e293b;'>{q.valor:.2f} €</h4>", unsafe_allow_html=True)
+                    with col_status:
+                        if q.paga:
+                            st.success("Pago", icon="✅")
+                        else:
+                            st.error("Em Dívida", icon="🚨")
+        else: 
+            st.info("Ainda não existem registos na sua conta.")
 
 def pagina_acessos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1167,19 +1206,20 @@ def pagina_quotas():
                         else: st.info("Não há quotas em falta.")
                 with col2:
                     if st.button(f":material/calendar_month: Gerar para Todo o Ano de {ano_sel}", width="stretch", type="primary"):
-                        novas_quotas = 0
-                        for c in condominos:
-                            for m in range(1, 13):
-                                m_str = f"{m:02d}/{ano_sel}"
-                                if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=m_str).first():
-                                    session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
-                                    novas_quotas += 1
-                        if novas_quotas > 0: 
-                            session.commit()
-                            registar_auditoria("CRIAR", "Quotas", f"Gerou em lote as quotas do ano {ano_sel} ({novas_quotas} novas quotas).")
-                            st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
-                        else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
-                        st.rerun()
+                        with st.spinner("A processar faturas para todo o ano... por favor aguarde."):
+                            novas_quotas = 0
+                            for c in condominos:
+                                for m in range(1, 13):
+                                    m_str = f"{m:02d}/{ano_sel}"
+                                    if not session.query(Quota).filter_by(condomino_id=c.id, mes_ano=m_str).first():
+                                        session.add(Quota(condomino_id=c.id, mes_ano=m_str, valor=valor_quota_padrao, paga=False))
+                                        novas_quotas += 1
+                            if novas_quotas > 0: 
+                                session.commit()
+                                registar_auditoria("CRIAR", "Quotas", f"Gerou em lote as quotas do ano {ano_sel} ({novas_quotas} novas quotas).")
+                                st.session_state.toast = (f"{novas_quotas} quotas geradas!", "🎉")
+                            else: st.session_state.toast = (f"As quotas de {ano_sel} já estavam geradas.", "ℹ️")
+                            st.rerun()
     else:
         if len(condominos_sem_quota) > 0: st.info("A sua quota deste mês ainda não foi processada.")
         else: st.success(f"✅ As suas quotas referentes a {mes_str} já se encontram processadas.")
@@ -1194,14 +1234,15 @@ def pagina_quotas():
             with st.expander(":material/forward_to_inbox: Enviar Avisos em Lote", expanded=False):
                 st.write("Notifique todos os condóminos com dívidas ativas num só clique.")
                 if st.button("Disparar Avisos para Todos os Devedores", width="stretch", type="primary"):
-                    emails_enviados = 0
-                    for d in dividas:
-                        if d.condomino.email:
-                            corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},\n\nVerificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
-                            if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email):
-                                emails_enviados += 1
-                    if emails_enviados > 0: st.success(f"{emails_enviados} avisos enviados com sucesso!")
-                    else: st.warning("Nenhum aviso enviado. Verifique se os condóminos devedores têm email registado.")
+                    with st.spinner("A enviar emails..."):
+                        emails_enviados = 0
+                        for d in dividas:
+                            if d.condomino.email:
+                                corpo_email = f"Exmo(a) Sr(a) {d.condomino.nome},\n\nVerificamos que se encontra a pagamento a quota de {d.mes_ano} no valor de {d.valor:.2f} €.\n\nPor favor, proceda à transferência para o seguinte IBAN: {config.get('IBAN_CONDOMINIO', 'N/D')}\n\nA Administração."
+                                if enviar_email_real(d.condomino.email, f"Aviso de Pagamento de Quota - {d.mes_ano}", corpo_email):
+                                    emails_enviados += 1
+                        if emails_enviados > 0: st.success(f"{emails_enviados} avisos enviados com sucesso!")
+                        else: st.warning("Nenhum aviso enviado. Verifique se os condóminos devedores têm email registado.")
 
         if dividas:
             with st.container(border=True):
@@ -1290,39 +1331,40 @@ def pagina_financas():
                     ficheiro_import_fin = st.file_uploader("Escolher ficheiro financeiro", type=["csv", "xlsx"], key=f"file_up_fin_{st.session_state.form_key}")
                     if ficheiro_import_fin is not None:
                         if st.button("Processar Importação", width="stretch", type="primary"):
-                            try:
-                                if ficheiro_import_fin.name.endswith(".csv"): 
-                                    try:
-                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding="utf-8", sep=None, engine="python")
-                                    except UnicodeDecodeError:
-                                        ficheiro_import_fin.seek(0)
-                                        df_imp = pd.read_csv(ficheiro_import_fin, encoding="latin1", sep=None, engine="python")
-                                else: 
-                                    df_imp = pd.read_excel(ficheiro_import_fin)
-                                
-                                novos_movs = 0
-                                for _, row in df_imp.iterrows():
-                                    tipo = str(row.get("Tipo", "")).strip().capitalize()
-                                    descricao = str(row.get("Descrição", "")).strip()
-                                    valor_raw = row.get("Valor", 0.0)
-                                    valor = pd.to_numeric(str(valor_raw).replace(",", "."), errors="coerce")
-                                    data_raw = row.get("Data", "")
-                                    data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != "" else hoje.strftime("%Y-%m-%d")
-
-                                    if tipo in ["Despesa", "Receita"] and descricao and pd.notna(valor) and float(valor) > 0:
-                                        session.add(Movimento(tipo=tipo, descricao=descricao, valor=float(valor), data=data_mov))
-                                        novos_movs += 1
-                                        
-                                if novos_movs > 0:
-                                    session.commit()
-                                    registar_auditoria("CRIAR", "Finanças", f"Importou {novos_movs} movimentos em lote via extrato bancário.")
-                                    st.success(f"{novos_movs} movimentos importados com sucesso!")
-                                    st.session_state.form_key += 1
-                                    st.rerun()
-                                else:
-                                    st.warning("Não foram importados registos válidos.")
-                            except Exception as e:
-                                st.error(f"Erro ao processar o ficheiro: {e}")
+                            with st.spinner("A processar movimentos..."):
+                                try:
+                                    if ficheiro_import_fin.name.endswith(".csv"): 
+                                        try:
+                                            df_imp = pd.read_csv(ficheiro_import_fin, encoding="utf-8", sep=None, engine="python")
+                                        except UnicodeDecodeError:
+                                            ficheiro_import_fin.seek(0)
+                                            df_imp = pd.read_csv(ficheiro_import_fin, encoding="latin1", sep=None, engine="python")
+                                    else: 
+                                        df_imp = pd.read_excel(ficheiro_import_fin)
+                                    
+                                    novos_movs = 0
+                                    for _, row in df_imp.iterrows():
+                                        tipo = str(row.get("Tipo", "")).strip().capitalize()
+                                        descricao = str(row.get("Descrição", "")).strip()
+                                        valor_raw = row.get("Valor", 0.0)
+                                        valor = pd.to_numeric(str(valor_raw).replace(",", "."), errors="coerce")
+                                        data_raw = row.get("Data", "")
+                                        data_mov = str(data_raw)[:10].strip() if pd.notna(data_raw) and str(data_raw).strip() != "" else hoje.strftime("%Y-%m-%d")
+    
+                                        if tipo in ["Despesa", "Receita"] and descricao and pd.notna(valor) and float(valor) > 0:
+                                            session.add(Movimento(tipo=tipo, descricao=descricao, valor=float(valor), data=data_mov))
+                                            novos_movs += 1
+                                            
+                                    if novos_movs > 0:
+                                        session.commit()
+                                        registar_auditoria("CRIAR", "Finanças", f"Importou {novos_movs} movimentos em lote via extrato bancário.")
+                                        st.success(f"{novos_movs} movimentos importados com sucesso!")
+                                        st.session_state.form_key += 1
+                                        st.rerun()
+                                    else:
+                                        st.warning("Não foram importados registos válidos.")
+                                except Exception as e:
+                                    st.error(f"Erro ao processar o ficheiro: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
         movs = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim)).all()
@@ -1400,14 +1442,15 @@ def pagina_financas():
             with col_mail:
                 if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                     if st.button("📧 Enviar Relatório por Email a Todos", width="stretch", type="primary"):
-                        condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
-                        emails_enviados = 0
-                        for c in condominos_com_email:
-                            corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.\n\nCumprimentos,\nA Administração."
-                            if enviar_email_real(c.email, f"Relatório de Contas Anual - {ano_sel}", corpo_email, anexo_bytes=pdf_bytes_anual, nome_anexo=f"Relatorio_Contas_{ano_sel}.pdf"):
-                                emails_enviados += 1
-                        if emails_enviados > 0: st.success(f"Relatório enviado a {emails_enviados} condóminos com sucesso!")
-                        else: st.warning("Não existem condóminos com email registado.")
+                        with st.spinner("A enviar relatório para todos os condóminos..."):
+                            condominos_com_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
+                            emails_enviados = 0
+                            for c in condominos_com_email:
+                                corpo_email = f"Exmo(a) Sr(a) {c.nome},\n\nJunto enviamos o Relatório de Contas Anual referente ao ano de {ano_sel}.\n\nCumprimentos,\nA Administração."
+                                if enviar_email_real(c.email, f"Relatório de Contas Anual - {ano_sel}", corpo_email, anexo_bytes=pdf_bytes_anual, nome_anexo=f"Relatorio_Contas_{ano_sel}.pdf"):
+                                    emails_enviados += 1
+                            if emails_enviados > 0: st.success(f"Relatório enviado a {emails_enviados} condóminos com sucesso!")
+                            else: st.warning("Não existem condóminos com email registado.")
         
         with st.container(border=True):
             st.write("**Detalhamento das Despesas do Ano:**")
@@ -1490,16 +1533,18 @@ def pagina_recibos():
                     if not st.session_state.modo_leitura:
                         if st.session_state.perfil == "Admin":
                             if st.button(":material/send: Enviar Confirmação Simples", width="stretch"):
-                                if q.condomino.email:
-                                    corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
-                                    if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
-                                else: st.error("Sem email registado.")
+                                with st.spinner("A enviar email..."):
+                                    if q.condomino.email:
+                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nConfirmamos o pagamento da quota de {q.mes_ano}, no valor de {q.valor:.2f} €.\nA Administração."
+                                        if enviar_email_real(q.condomino.email, f"Confirmação de Pagamento - {q.mes_ano}", corpo): st.toast("Enviado!", icon="✅")
+                                    else: st.error("Sem email registado.")
                             if REPORTLAB_INSTALLED:
                                 if st.button("📧 Enviar Recibo com PDF Anexo", type="primary", width="stretch"):
-                                    if q.condomino.email:
-                                        corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo oficial em PDF.\nA Administração."
-                                        if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado!", icon="🎉")
-                                    else: st.error("Condómino sem email.")
+                                    with st.spinner("A gerar PDF e a enviar email..."):
+                                        if q.condomino.email:
+                                            corpo = f"Exmo(a) Sr(a) {q.condomino.nome},\nSegue em anexo o recibo oficial em PDF.\nA Administração."
+                                            if enviar_email_real(q.condomino.email, f"Recibo Oficial de Pagamento - {q.mes_ano}", corpo, anexo_bytes=pdf_bytes, nome_anexo=f"{nome_pdf}.pdf"): st.toast("Enviado!", icon="🎉")
+                                        else: st.error("Condómino sem email.")
 
 def pagina_documentos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1953,11 +1998,12 @@ def pagina_assembleias():
                                             registar_auditoria("CRIAR", "Arquivo", f"Arquivou a ata em PDF da assembleia '{r.titulo}'.")
                                             st.success("Arquivada!")
                                     if c_m.button("📧 Enviar por Email", key=f"mail_{r.id}"):
-                                        conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
-                                        enviados = 0
-                                        for c in conds_email:
-                                            if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Segue em anexo a ata.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
-                                        st.success(f"Enviada para {enviados} proprietários!")
+                                        with st.spinner("A enviar emails com a ata..."):
+                                            conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
+                                            enviados = 0
+                                            for c in conds_email:
+                                                if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Segue em anexo a ata.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
+                                            st.success(f"Enviada para {enviados} proprietários!")
                         else:
                             if r.texto_ata:
                                 with st.expander("👁️ Visualizar Ata"):
@@ -2221,18 +2267,19 @@ def pagina_configuracoes():
                     arq_import_json = st.file_uploader("Importar Ficheiro .json", type=["json"], key=f"upload_snapshot_json")
                     if arq_import_json is not None:
                         if st.button("🔄 Executar Restauro da Segurança Agora", use_container_width=True, type="primary"):
-                            conteudo_json_string = arq_import_json.read().decode("utf-8")
-                            sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
-                            if sucesso:
-                                registar_auditoria("ATUALIZAR", "Sistema", "Executou uma restauração completa do ecossistema de BD a partir de ficheiro JSON.")
-                                st.success(msg_res)
-                                import time
-                                time.sleep(2)
-                                st.session_state.logado = False
-                                st.session_state.username = None
-                                st.rerun()
-                            else:
-                                st.error(msg_res)
+                            with st.spinner("A restaurar o sistema da cópia de segurança..."):
+                                conteudo_json_string = arq_import_json.read().decode("utf-8")
+                                sucesso, msg_res = restaurar_snapshot_json(conteudo_json_string)
+                                if sucesso:
+                                    registar_auditoria("ATUALIZAR", "Sistema", "Executou uma restauração completa do ecossistema de BD a partir de ficheiro JSON.")
+                                    st.success(msg_res)
+                                    import time
+                                    time.sleep(2)
+                                    st.session_state.logado = False
+                                    st.session_state.username = None
+                                    st.rerun()
+                                else:
+                                    st.error(msg_res)
 
             st.markdown("<br>", unsafe_allow_html=True)
             with st.container(border=True):
