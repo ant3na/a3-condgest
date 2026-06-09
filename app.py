@@ -2077,12 +2077,56 @@ def pagina_assembleias():
                     if r.realizada:
                         if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                             with st.expander("📝 Redigir / Exportar Ata Digital", expanded=False):
-                                texto_atual = r.texto_ata if r.texto_ata else "Decisões tomadas na reunião de condomínio..."
-                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=150, key=f"ata_txt_{r.id}")
+                                
+                                # --- MODELO DINÂMICO DE ATA ---
+                                morada_cond = config.get("MORADA_CONDOMINIO", "[Morada do Condomínio]")
+                                nif_cond = config.get("NIF_CONDOMINIO", "[NIF]")
+                                
+                                modelo_base = f"""ACTA Nº [Inserir Número da Ata]
+
+Aos [Dia] dias do mês de [Mês] de [Ano] pelas [Hora] horas e [Minutos] minutos, reuniu no hall do prédio, a assembleia [ordinária / extraordinária] de condóminos do condomínio do edifício em propriedade horizontal sito em {morada_cond}, NIPC {nif_cond}, para deliberar sobre os seguintes assuntos:
+
+{r.assuntos}
+
+A assembleia foi regularmente convocada via [Carta / Email / WhatsApp] para conhecimento de todos os condóminos.
+
+Estiveram presentes os seguintes condóminos:
+- Proprietário da FRACÇÃO "[...]" representando uma permilagem de [...] do capital total do edifício.
+- [Preencher restantes presentes...]
+
+Não estiveram presentes os seguintes condóminos:
+- Proprietário da FRACÇÃO "[...]" representando uma permilagem de [...] do capital total do edifício.
+- [Preencher restantes ausentes...]
+
+Exerceu as funções de presidente desta assembleia o(a) Sr(a). [Nome do Presidente] ----
+
+Foram discutidos os assuntos da Ordem de Trabalhos, tendo-se deliberado o seguinte:
+
+Relativamente ao primeiro ponto, [Escrever deliberação...]
+
+No segundo ponto, [Escrever deliberação...]
+
+Nada mais de relevante havendo a tratar, encerram-se os trabalhos da assembleia, lavrando-se a presente ata que, após lida e aprovada, vai ser assinada por mim, na qualidade de presidente desta assembleia e pelos condóminos presentes.
+
+[Localidade], {r.data_agendada}.
+
+O Presidente da Assembleia:
+____________________________________________________
+
+Os Condóminos:
+Proprietário da FRACÇÃO "[...]": ______________________________________
+Proprietário da FRACÇÃO "[...]": ______________________________________
+"""
+                                # Carrega o texto gravado ou o modelo base se estiver vazio
+                                texto_atual = r.texto_ata if r.texto_ata else modelo_base
+                                
+                                # Aumentámos o height para 550 para ser mais confortável de editar textos longos
+                                novo_texto = st.text_area("Corpo da Ata", value=texto_atual, height=550, key=f"ata_txt_{r.id}")
+                                
                                 if st.button("💾 Gravar Ata", key=f"save_{r.id}", type="primary"):
                                     r.texto_ata = novo_texto; session.commit()
                                     registar_auditoria("ATUALIZAR", "Assembleias", f"Redigiu/Atualizou a ata digital da assembleia '{r.titulo}'.")
-                                    st.toast("Gravado!", icon="✅")
+                                    st.toast("Gravado com sucesso!", icon="✅")
                                 
                                 if r.texto_ata and REPORTLAB_INSTALLED:
                                     pdf_ata = gerar_pdf_ata(r)
@@ -2098,14 +2142,14 @@ def pagina_assembleias():
                                             session.add(Documento(nome_ficheiro=nome_ficheiro, categoria="Atas de Assembleia", caminho=caminho, carregado_por="Sistema"))
                                             session.commit()
                                             registar_auditoria("CRIAR", "Arquivo", f"Arquivou a ata em PDF da assembleia '{r.titulo}'.")
-                                            st.success("Arquivada!")
+                                            st.success("Ata arquivada com sucesso nos Documentos!")
                                     if c_m.button("📧 Enviar por Email", key=f"mail_{r.id}"):
                                         with st.spinner("A enviar emails com a ata..."):
                                             conds_email = session.query(Condomino).filter(Condomino.email.isnot(None), Condomino.email != "").all()
                                             enviados = 0
                                             for c in conds_email:
-                                                if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Segue em anexo a ata.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
-                                            st.success(f"Enviada para {enviados} proprietários!")
+                                                if enviar_email_real(c.email, f"Ata de Assembleia - {r.titulo}", "Estimado(a) Condómino(a),\n\nSegue em anexo a ata da reunião.\n\nA Administração.", anexo_bytes=pdf_ata, nome_anexo=nome_ficheiro): enviados += 1
+                                            st.success(f"Ata enviada para {enviados} proprietários!")
                         else:
                             if r.texto_ata:
                                 with st.expander("👁️ Visualizar Ata"):
