@@ -582,14 +582,31 @@ def pagina_login():
     col_imagem, col_form = st.columns([1.3, 1], gap="large")
     
     with col_imagem:
-        # Imagem de fundo premium (Podes substituir o URL por um caminho local se preferires)
-        st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
+        # Agrupar a personalização num menu expansível discreto
+        with st.expander("⚙️ Personalizar Ecrã de Login"):
+            titulo_escolhido = st.text_input(
+                "Título do ecrã:", 
+                value="A3® Portal do Condomínio", 
+                key="login_titulo_customizado"
+            )
+            nova_imagem = st.file_uploader("Carregar nova imagem de fundo", type=["jpg", "jpeg", "png"])
+            
+            # Se for feito o upload, guarda o ficheiro localmente
+            if nova_imagem is not None:
+                with open("bg_login.png", "wb") as f:
+                    f.write(nova_imagem.getbuffer())
+                st.success("Imagem atualizada com sucesso! A página vai recarregar.")
         
-        # Mensagem de boas-vindas dinâmica puxada do config.json
-        nome_cond = config.get('NOME_CONDOMINIO', 'A3® Portal do Condomínio')
+        # Exibir a imagem de fundo: tenta ler a local, se não existir mostra uma dica
+        if os.path.exists("bg_login.png"):
+            st.image("bg_login.png", use_container_width=True)
+        else:
+            st.info("🖼️ O ecrã está sem imagem. Abra o menu 'Personalizar Ecrã de Login' acima para carregar a sua fotografia do prédio.")
+            
+        # Mensagem dinâmica com o título escolhido
         st.markdown(f"""
-        <div style='margin-top: 5px; padding-left: 5px;'>
-            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{nome_cond}</h1>
+        <div style='margin-top: 10px; padding-left: 5px;'>
+            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_escolhido}</h1>
             <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -600,7 +617,6 @@ def pagina_login():
             return
             
         with st.container(border=True):
-            # Se houver logo próprio, mostramos no topo do formulário
             if os.path.exists("logo.png"):
                 col_esp, col_img, col_esp2 = st.columns([1, 1.5, 1])
                 with col_img: st.image("logo.png", use_container_width=True)
@@ -651,7 +667,6 @@ def pagina_login():
                         else: 
                             st.error("❌ Credenciais incorretas. Tente novamente.")
             
-            # Adicionar o botão expansível de "Recuperar Password" para transmitir mais profissionalismo
             with st.expander("Esqueceu-se da password?", expanded=False):
                 st.info("ℹ️ Por motivos de segurança, a reposição de passwords é feita pela Administração. Por favor, contacte o seu administrador de condomínio para repor o seu acesso.")
                             
@@ -660,7 +675,6 @@ def pagina_login():
             <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
         </div>
         """, unsafe_allow_html=True)
-
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     
