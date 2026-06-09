@@ -717,7 +717,7 @@ def pagina_dashboard_morador():
     st.markdown("<br>", unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        # Converte as quebras de linha do texto para tags HTML para manter a formatação
+        # Garante que as quebras de linha inseridas no texto são respeitadas no HTML
         texto_aviso = config["AVISO_GLOBAL"].replace("\n", "<br>")
         
         st.markdown(f"""
@@ -734,7 +734,7 @@ def pagina_dashboard_morador():
             <div style="font-size: 26px; margin-right: 15px; line-height: 1;">📢</div>
             <div>
                 <h4 style="margin-top: 0; margin-bottom: 8px; color: #1e3a8a; font-size: 16px; font-weight: 600;">
-                    Aviso da Administração
+                    Aviso à comunidade
                 </h4>
                 <p style="margin: 0; color: #334155; font-size: 14px; line-height: 1.5;">
                     {texto_aviso}
@@ -828,7 +828,31 @@ def pagina_dashboard():
     """, unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        st.info(f"📢 **Aviso Ativo no Portal dos Moradores:**\n\n{config['AVISO_GLOBAL']}")
+        # Garante que as quebras de linha inseridas no texto são respeitadas no HTML
+        texto_aviso = config["AVISO_GLOBAL"].replace("\n", "<br>")
+        
+        st.markdown(f"""
+        <div style="
+            background-color: #eff6ff; 
+            border-left: 6px solid #3b82f6; 
+            border-radius: 8px; 
+            padding: 16px 20px; 
+            margin-bottom: 25px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: flex-start;
+        ">
+            <div style="font-size: 26px; margin-right: 15px; line-height: 1;">📢</div>
+            <div>
+                <h4 style="margin-top: 0; margin-bottom: 8px; color: #1e3a8a; font-size: 16px; font-weight: 600;">
+                    Aviso à comunidade
+                </h4>
+                <p style="margin: 0; color: #334155; font-size: 14px; line-height: 1.5;">
+                    {texto_aviso}
+                </p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # --- KPIs PRINCIPAIS ---
     col1, col2, col3, col4 = st.columns(4)
