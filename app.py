@@ -561,43 +561,59 @@ def configurar_sidebar():
 
     st.sidebar.subheader(":material/schedule: Filtros de Tempo")
     
-    # --- 1. GARANTIR A INICIALIZAÇÃO CORRETA COM A DATA DE HOJE ---
-    # Isto força o sistema a arrancar sempre no Mês/Ano atuais
-    if "filtro_mes" not in st.session_state:
-        st.session_state["filtro_mes"] = meses[hoje.month - 1]
-    if "filtro_ano" not in st.session_state:
-        st.session_state["filtro_ano"] = hoje.year
+    # --- 1. ESTADO PERSISTENTE DESACOPLADO DOS WIDGETS ---
+    if "mes_persistente" not in st.session_state:
+        st.session_state.mes_persistente = meses[hoje.month - 1]
+    if "ano_persistente" not in st.session_state:
+        st.session_state.ano_persistente = hoje.year
 
     # --- 2. BOTÕES DE ACESSO RÁPIDO ---
     c_ant, c_hoje, c_seg = st.sidebar.columns([1, 1.2, 1])
     
-    if c_ant.button("◀ Mês", use_container_width=True, help="Retroceder para o mês anterior"):
-        idx = meses.index(st.session_state["filtro_mes"])
+    if c_ant.button("◀ Mês", use_container_width=True, help="Retroceder"):
+        idx = meses.index(st.session_state.mes_persistente)
         if idx == 0:
-            st.session_state["filtro_mes"] = meses[11]
-            st.session_state["filtro_ano"] -= 1
+            st.session_state.mes_persistente = meses[11]
+            st.session_state.ano_persistente -= 1
         else:
-            st.session_state["filtro_mes"] = meses[idx - 1]
+            st.session_state.mes_persistente = meses[idx - 1]
         st.rerun()
         
-    if c_hoje.button("📅 Atual", use_container_width=True, help="Saltar rapidamente para o mês de hoje"):
-        st.session_state["filtro_mes"] = meses[hoje.month - 1]
-        st.session_state["filtro_ano"] = hoje.year
+    if c_hoje.button("📅 Atual", use_container_width=True, help="Saltar para hoje"):
+        st.session_state.mes_persistente = meses[hoje.month - 1]
+        st.session_state.ano_persistente = hoje.year
         st.rerun()
         
-    if c_seg.button("Mês ▶", use_container_width=True, help="Avançar para o mês seguinte"):
-        idx = meses.index(st.session_state["filtro_mes"])
+    if c_seg.button("Mês ▶", use_container_width=True, help="Avançar"):
+        idx = meses.index(st.session_state.mes_persistente)
         if idx == 11:
-            st.session_state["filtro_mes"] = meses[0]
-            st.session_state["filtro_ano"] += 1
+            st.session_state.mes_persistente = meses[0]
+            st.session_state.ano_persistente += 1
         else:
-            st.session_state["filtro_mes"] = meses[idx + 1]
+            st.session_state.mes_persistente = meses[idx + 1]
         st.rerun()
 
-    # --- 3. WIDGETS CONTROLADOS EXCLUSIVAMENTE PELA SESSÃO ---
-    # (Sem os parâmetros 'index' e 'value' para evitar resets indesejados)
-    mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses, key="filtro_mes")
-    ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, max_value=2100, step=1, key="filtro_ano")
+    # --- NOVO: Callback para manter os valores imunes ao Widget Cleanup ---
+    def sync_filtros():
+        st.session_state.mes_persistente = st.session_state.widget_mes
+        st.session_state.ano_persistente = st.session_state.widget_ano
+
+    # --- 3. WIDGETS PROTEGIDOS ---
+    mes_sel = st.sidebar.selectbox(
+        "Mês de Trabalho", 
+        meses, 
+        index=meses.index(st.session_state.mes_persistente),
+        key="widget_mes",
+        on_change=sync_filtros
+    )
+    
+    ano_sel = st.sidebar.number_input(
+        "Ano de Trabalho", 
+        min_value=2020, max_value=2100, step=1, 
+        value=st.session_state.ano_persistente,
+        key="widget_ano",
+        on_change=sync_filtros
+    )
     
     # --- 4. CÁLCULO DAS VARIÁVEIS DE TEMPO ---
     idx_mes = meses.index(mes_sel) + 1
@@ -965,7 +981,7 @@ def pagina_dashboard():
         with c2:
             with st.container(border=True):
                 st.subheader(f"Receitas vs Despesas [{ano_sel}]")
-                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel))).all()]
+                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel)))).all()
                 dados_grafico.extend([{"Mês": q.data_pagamento[5:7], "Tipo": "Receita", "Valor": q.valor} for q in session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all() if q.data_pagamento])
                 if dados_grafico:
                     df_fin_grouped = pd.DataFrame(dados_grafico).groupby(["Mês", "Tipo"]).sum().reset_index()
@@ -2345,6 +2361,8 @@ Proprietário da FRACÇÃO "[...]": ______________________________________
 
 def pagina_mural():
     from datetime import datetime
+    mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
+    
     st.header(":material/forum: Mural da Comunidade")
     st.write("Um espaço para partilhar anúncios, pedidos ou comunicados com os seus vizinhos.")
     
