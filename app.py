@@ -560,8 +560,43 @@ def configurar_sidebar():
         st.sidebar.markdown("---")
 
     st.sidebar.subheader(":material/schedule: Filtros de Tempo")
-    mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses, index=hoje.month - 1)
-    ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, value=hoje.year)
+    
+    # --- INOVAÇÃO: AÇÕES RÁPIDAS (Quick Presets) ---
+    # Inicializa os valores padrão na memória da sessão na primeira visita
+    if "filtro_mes" not in st.session_state:
+        st.session_state.filtro_mes = meses[hoje.month - 1]
+    if "filtro_ano" not in st.session_state:
+        st.session_state.filtro_ano = hoje.year
+
+    # Criar a barra de navegação rápida (3 colunas compactas)
+    c_ant, c_hoje, c_seg = st.sidebar.columns([1, 1.2, 1])
+    
+    if c_ant.button("◀ Mês", use_container_width=True, help="Retroceder para o mês anterior"):
+        idx = meses.index(st.session_state.filtro_mes)
+        if idx == 0:
+            st.session_state.filtro_mes = meses[11]
+            st.session_state.filtro_ano -= 1
+        else:
+            st.session_state.filtro_mes = meses[idx - 1]
+        st.rerun()
+        
+    if c_hoje.button("📅 Atual", use_container_width=True, help="Saltar rapidamente para o mês de hoje"):
+        st.session_state.filtro_mes = meses[hoje.month - 1]
+        st.session_state.filtro_ano = hoje.year
+        st.rerun()
+        
+    if c_seg.button("Mês ▶", use_container_width=True, help="Avançar para o mês seguinte"):
+        idx = meses.index(st.session_state.filtro_mes)
+        if idx == 11:
+            st.session_state.filtro_mes = meses[0]
+            st.session_state.filtro_ano += 1
+        else:
+            st.session_state.filtro_mes = meses[idx + 1]
+        st.rerun()
+
+    # Os campos agora estão amarrados à memória da sessão usando a propriedade 'key'
+    mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses, key="filtro_mes")
+    ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, key="filtro_ano")
     
     idx_mes = meses.index(mes_sel) + 1
     str_inicio = f"{ano_sel}-{idx_mes:02d}-01"
@@ -572,7 +607,6 @@ def configurar_sidebar():
     st.sidebar.caption("💡 **Dica:** Altere entre o Modo Claro e Escuro clicando nos **⋮** no canto superior direito > **Settings** > **Theme**.")
     
     return mes_sel, ano_sel, str_inicio, str_fim, mes_str
-
 # ==========================================
 # MÓDULOS DE PÁGINAS
 # ==========================================
