@@ -576,32 +576,48 @@ def configurar_sidebar():
 # MÓDULOS DE PÁGINAS
 # ==========================================
 def pagina_login():
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1.2, 1.2, 1.2]) 
+    st.markdown("<br><br>", unsafe_allow_html=True)
     
-    with c2:
+    # Criar duas colunas para o efeito "Split Screen" (Esquerda Imagem, Direita Form)
+    col_imagem, col_form = st.columns([1.3, 1], gap="large")
+    
+    with col_imagem:
+        # Imagem de fundo premium (Podes substituir o URL por um caminho local se preferires)
+        st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
+        
+        # Mensagem de boas-vindas dinâmica puxada do config.json
+        nome_cond = config.get('NOME_CONDOMINIO', 'A3® Portal do Condomínio')
+        st.markdown(f"""
+        <div style='margin-top: 5px; padding-left: 5px;'>
+            <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{nome_cond}</h1>
+            <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_form:
         if not WERKZEUG_INSTALLED:
             st.error("⚠️ Erro Crítico: A biblioteca 'werkzeug' não está instalada.")
             return
             
         with st.container(border=True):
+            # Se houver logo próprio, mostramos no topo do formulário
             if os.path.exists("logo.png"):
                 col_esp, col_img, col_esp2 = st.columns([1, 1.5, 1])
                 with col_img: st.image("logo.png", use_container_width=True)
             
             st.markdown("""
             <div style='text-align: center;'>
-                <h2 style='margin-bottom: 0px; color: #1e293b;'>A3® Portal do Condomínio</h2>
-                <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Portal de Administração e Moradores</p>
+                <h3 style='margin-bottom: 0px; color: #1e293b;'>Acesso Reservado</h3>
+                <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
             </div>
             """, unsafe_allow_html=True)
             
             with st.form("form_login", clear_on_submit=True):
-                user = st.text_input("👤 Nome de Utilizador", placeholder="Insira o seu utilizador")
-                pwd = st.text_input("🔒 Password", type="password", placeholder="Insira a sua password")
+                user = st.text_input("👤 Nome de Utilizador", placeholder="Ex: jsilva")
+                pwd = st.text_input("🔒 Password", type="password", placeholder="••••••••")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                submit = st.form_submit_button("Entrar no Sistema", type="primary", use_container_width=True)
+                submit = st.form_submit_button("Entrar no Portal", type="primary", use_container_width=True)
                 
                 if submit:
                     if not user or not pwd:
@@ -615,6 +631,7 @@ def pagina_login():
                             st.session_state.perfil = utilizador_db.perfil
                             st.session_state.condomino_id = utilizador_db.condomino_id
                             
+                            # Carregar Permissões
                             st.session_state.perm_dashboard = utilizador_db.perm_dashboard
                             st.session_state.perm_condominos = utilizador_db.perm_condominos
                             st.session_state.perm_quotas = utilizador_db.perm_quotas
@@ -633,12 +650,16 @@ def pagina_login():
                             st.rerun()
                         else: 
                             st.error("❌ Credenciais incorretas. Tente novamente.")
+            
+            # Adicionar o botão expansível de "Recuperar Password" para transmitir mais profissionalismo
+            with st.expander("Esqueceu-se da password?", expanded=False):
+                st.info("ℹ️ Por motivos de segurança, a reposição de passwords é feita pela Administração. Por favor, contacte o seu administrador de condomínio para repor o seu acesso.")
                             
-            st.markdown("""
-            <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5</p>
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style='text-align: center; margin-top: 15px;'>
+            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
