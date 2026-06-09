@@ -668,12 +668,70 @@ def pagina_dashboard_morador():
         st.error("O seu utilizador não está associado a nenhuma fração.")
         return
     cond = session.get(Condomino, st.session_state.condomino_id)
-    st.title(f":material/home: Bem-vindo, {cond.nome}!")
-    st.subheader(f"Fração: {cond.fracao} | Permilagem: {cond.permilagem}‰")
+    
+    st.title(f"Bem-vindo, {cond.nome}! 👋")
+    st.markdown(f"**Fração:** {cond.fracao} &nbsp;|&nbsp; **Permilagem:** {cond.permilagem}‰")
+    st.markdown("<br>", unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
         st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
     
+    # --- NOVO: GAMIFICAÇÃO / BARRA DE PROGRESSO ANUAL ---
+    with st.container(border=True):
+        st.subheader("🎯 O seu Progresso Anual")
+        quotas_ano_atual = session.query(Quota).filter(and_(Quota.condomino_id == cond.id, Quota.mes_ano.endswith(str(ano_sel)))).all()
+        
+        if quotas_ano_atual:
+            total_ano = len(quotas_ano_atual)
+            pagas_ano = len([q for q in quotas_ano_atual if q.paga])
+            percentagem = int((pagas_ano / total_ano) * 100) if total_ano > 0 else 0
+            
+            c_texto, c_perc = st.columns([4, 1])
+            c_texto.write(f"Já regularizou **{pagas_ano} de {total_ano}** quotas referentes ao ano civil de {ano_sel}.")
+            c_perc.markdown(f"<h3 style='text-align: right; margin: 0; color: #2563eb;'>{percentagem}%</h3>", unsafe_allow_html=True)
+            
+            st.progress(percentagem / 100.0)
+            
+            if percentagem == 100:
+                st.success("🎉 Excelente! Tem o seu ano completamente regularizado.")
+        else:
+            st.info(f"Ainda não foram geradas quotas para o ano de {ano_sel}.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- AVISO DE DÍVIDAS E DADOS DE PAGAMENTO ---
+    dividas = session.query(Quota).filter_by(condomino_id=cond.id, paga=False).all()
+    if dividas:
+        divida_total = sum([q.valor for q in dividas])
+        st.error(f"⚠️ Tem um valor total em dívida de **{divida_total:.2f} €**.")
+        with st.expander(":material/account_balance: Ver Dados para Pagamento", expanded=True):
+            st.write("Por favor, utilize o seguinte IBAN para regularizar a sua situação:")
+            st.code(f"IBAN: {config.get('IBAN_CONDOMINIO', 'Não configurado')}", language="text")
+            st.caption("Após transferência, aguarde a validação por parte da Administração.")
+            
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # --- CONTA CORRENTE COM CARTÕES ---
+    st.write("### :material/receipt_long: Histórico de Quotas")
+    quotas = session.query(Quota).filter_by(condomino_id=cond.id).order_by(Quota.mes_ano.desc()).limit(12).all()
+    
+    if quotas:
+        for q in quotas:
+            with st.container(border=True):
+                col_info, col_valor, col_status = st.columns([2, 1, 1])
+                with col_info:
+                    st.markdown(f"**Ref:** {q.mes_ano}")
+                    st.caption(f"Pago a: {q.data_pagamento if q.paga else '—'}")
+                with col_valor:
+                    st.markdown(f"<h4 style='margin:0; color:#1e293b;'>{q.valor:.2f} €</h4>", unsafe_allow_html=True)
+                with col_status:
+                    if q.paga:
+                        st.success("Pago", icon="✅")
+                    else:
+                        st.error("Pendente", icon="⏳")
+    else: 
+        st.info("Ainda não existem registos na sua conta corrente.")
+
     with st.expander(":material/key: Alterar a minha Password", expanded=False):
         with st.form("form_pwd"):
             nova_pwd = st.text_input("Nova Password", type="password", key=f"pwd1_{st.session_state.form_key}")
@@ -689,38 +747,202 @@ def pagina_dashboard_morador():
                     st.session_state.toast = ("Password updated com sucesso!", "✅")
                     st.session_state.form_key += 1
                     st.rerun()
+
+def pagina_dashboard():
+    import plotly.graph_objects as go
     
-    dividas = session.query(Quota).filter_by(condomino_id=cond.id, paga=False).all()
-    if dividas:
-        divida_total = sum([q.valor for q in dividas])
-        st.warning(f"Tem um valor total em dívida de **{divida_total:.2f} €**.")
-        with st.expander(":material/account_balance: Dados para Pagamento", expanded=True):
-            st.write("Por favor, utilize o seguinte IBAN para regularizar a sua situação:")
-            st.code(f"IBAN: {config.get('IBAN_CONDOMINIO', 'Não configurado')}", language="text")
-    else:
-        st.success("Tudo em dia! Obrigado pela sua contribuição.")
+    mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
+    
+    st.title("Dashboard Central")
+    st.markdown(f"""
+    <div style="margin-top: -15px; margin-bottom: 25px;">
+        <p style="font-size: 16px; color: #64748b; font-weight: 500;">Visão global de operações referente a <strong>{mes_sel} {ano_sel}</strong></p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
+        st.info(f"📢 **Aviso Ativo no Portal dos Moradores:**\n\n{config['AVISO_GLOBAL']}")
+    
+    # --- KPIs PRINCIPAIS ---
+    col1, col2, col3, col4 = st.columns(4)
+    total_cond = session.query(Condomino).count()
+    saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo="Receita").scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo="Despesa").scalar() or 0.0)
+    valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
+    dividas_ativas = session.query(Quota).filter_by(paga=False).count()
+    ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
+
+    cor_delta_divida = "normal" if dividas_ativas == 0 else "inverse"
+
+    col1.metric("Frações Registadas", total_cond)
+    col2.metric("Saldo de Caixa", f"{saldo_total:.2f} €")
+    col3.metric("Valor em Dívida", f"{valor_divida:.2f} €", f"{dividas_ativas} quotas atrasadas", delta_color=cor_delta_divida)
+    col4.metric("Ocorrências Abertas", ocs_pendentes, f"{ocs_pendentes} pendentes", delta_color="inverse" if ocs_pendentes > 0 else "normal")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.write("### :material/receipt_long: A sua Conta Corrente")
-        quotas = session.query(Quota).filter_by(condomino_id=cond.id).order_by(Quota.mes_ano.desc()).all()
+    tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
+    meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
+
+    with tab_geral:
+        c1, c2, c3 = st.columns(3)
         
-        if quotas:
-            for q in quotas:
-                with st.container(border=True):
-                    col_info, col_valor, col_status = st.columns([2, 1, 1])
-                    with col_info:
-                        st.markdown(f"**Referência:** {q.mes_ano}")
-                        st.caption(f"Data de Pagamento: {q.data_pagamento if q.paga else '—'}")
-                    with col_valor:
-                        st.markdown(f"<h4 style='margin:0; color:#1e293b;'>{q.valor:.2f} €</h4>", unsafe_allow_html=True)
-                    with col_status:
-                        if q.paga:
-                            st.success("Pago", icon="✅")
-                        else:
-                            st.error("Em Dívida", icon="🚨")
-        else: 
-            st.info("Ainda não existem registos na sua conta.")
+        with c1:
+            with st.container(border=True):
+                st.subheader(f"Estado das Quotas [{ano_sel}]")
+                quotas_ano = session.query(Quota).filter(Quota.mes_ano.endswith(str(ano_sel))).all()
+                if quotas_ano:
+                    df_q = pd.DataFrame([{"Estado": "Pagas", "Valor": q.valor} if q.paga else {"Estado": "Em Dívida", "Valor": q.valor} for q in quotas_ano])
+                    fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values="Valor", names="Estado", hole=0.4, color="Estado", color_discrete_map={"Pagas":"#2563eb", "Em Dívida":"#ef4444"})
+                    fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+                    
+                    total_gerado = sum(q.valor for q in quotas_ano)
+                    total_pago = sum(q.valor for q in quotas_ano if q.paga)
+                    if total_gerado > 0:
+                        taxa = (total_pago / total_gerado) * 100
+                        st.write(f"**Taxa de Cobrança Anual:** {taxa:.1f}%")
+                        st.progress(min(taxa / 100, 1.0))
+                else: st.info("Sem quotas geradas neste ano.")
+
+        with c2:
+            with st.container(border=True):
+                st.subheader(f"Receitas vs Despesas [{ano_sel}]")
+                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel))).all()]
+                dados_grafico.extend([{"Mês": q.data_pagamento[5:7], "Tipo": "Receita", "Valor": q.valor} for q in session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all() if q.data_pagamento])
+                if dados_grafico:
+                    df_fin_grouped = pd.DataFrame(dados_grafico).groupby(["Mês", "Tipo"]).sum().reset_index()
+                    df_fin_grouped["Mês_Nome"] = df_fin_grouped["Mês"].map(meses_map)
+                    fig2 = px.bar(df_fin_grouped, x="Mês_Nome", y="Valor", color="Tipo", barmode="group", color_discrete_map={"Receita":"#2563eb", "Despesa":"#ef4444"}, text_auto=".2f")
+                    fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+                else: st.info("Sem dados financeiros registados.")
+                
+        with c3:
+            with st.container(border=True):
+                st.subheader(f"Orçamento [{ano_sel}]")
+                orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
+                despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == "Despesa", Movimento.data.startswith(str(ano_sel)))).all()
+                despesas_ano = sum(d.valor for d in despesas_ano_lista)
+                
+                if orc and orc.valor_anual > 0:
+                    fig_gauge = go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=despesas_ano,
+                        number={"valueformat": ".2f", "suffix": " €"},
+                        domain={"x": [0, 1], "y": [0, 1]},
+                        gauge={
+                            "axis": {"range": [None, orc.valor_anual], "tickwidth": 1},
+                            "bar": {"color": "#1e293b"},
+                            "bgcolor": "white",
+                            "steps": [
+                                {"range": [0, orc.valor_anual * 0.7], "color": "#bbf7d0"},
+                                {"range": [orc.valor_anual * 0.7, orc.valor_anual * 0.9], "color": "#fef08a"},
+                                {"range": [orc.valor_anual * 0.9, orc.valor_anual * 1.5], "color": "#fecaca"}
+                            ],
+                            "threshold": {
+                                "line": {"color": "red", "width": 3},
+                                "thickness": 0.75,
+                                "value": orc.valor_anual
+                            }
+                        }
+                    ))
+                    fig_gauge.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", 
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=30, b=10, l=20, r=20),
+                        height=250
+                    )
+                    st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
+                    
+                    percentagem = (despesas_ano / orc.valor_anual) * 100
+                    if percentagem > 100:
+                        st.error(f"⚠️ Orçamento excedido em {percentagem - 100:.1f}%")
+                    elif percentagem > 90:
+                        st.warning("⚠️ Orçamento quase no limite!")
+                else: 
+                    st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para o definir.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        r2_c1, r2_c2 = st.columns([2, 1])
+        
+        with r2_c1:
+            with st.container(border=True):
+                st.subheader("📋 Gestão Operacional")
+                c_op1, c_op2 = st.columns(2)
+                with c_op1:
+                    st.markdown("**Ocorrências Pendentes**")
+                    ocs_lista = session.query(Ocorrencia).filter_by(resolvida=False).order_by(Ocorrencia.id.desc()).limit(3).all()
+                    if ocs_lista:
+                        for o in ocs_lista: st.error(f"🔴 **{o.data_criacao}**: {o.titulo}")
+                    else: st.success("✔️ Sem ocorrências.")
+                with c_op2:
+                    st.markdown("**Próximas Manutenções**")
+                    ints_lista = session.query(Intervencao).filter_by(concluida=False).order_by(Intervencao.data_agendada.asc()).limit(3).all()
+                    if ints_lista:
+                        for i in ints_lista: st.warning(f"🟡 **{i.data_agendada}**: {i.titulo}")
+                    else: st.success("✔️ Manutenções em dia.")
+                    
+        with r2_c2:
+            with st.container(border=True):
+                st.subheader("📅 Agenda & Avisos")
+                ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
+                sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
+                contratos_todos = session.query(Contrato).all()
+                
+                alertas = 0
+                if contratos_todos:
+                    for c in contratos_todos:
+                        try:
+                            dias_restantes = (datetime.strptime(c.data_fim, "%Y-%m-%d").date() - hoje).days
+                            if dias_restantes < 0:
+                                st.error(f"🚨 **Contrato Expirado:** '{c.titulo}' expirou!"); alertas+=1
+                            elif 0 <= dias_restantes <= 30:
+                                st.warning(f"⚠️ **A Expirar:** '{c.titulo}' ({dias_restantes} dias)"); alertas+=1
+                        except: pass
+
+                if ass_futuras:
+                    for a in ass_futuras:
+                        try:
+                            dias_restantes = (datetime.strptime(a.data_agendada, "%Y-%m-%d").date() - hoje).days
+                            if dias_restantes == 0: st.warning(f"🚨 **Assembleia HOJE:** {a.titulo}"); alertas+=1
+                            elif dias_restantes > 0: st.info(f"⏳ **Reunião em {dias_restantes} dias:** {a.titulo}"); alertas+=1
+                        except: pass
+                
+                if sond_ativas > 0:
+                    st.success(f"🗳️ **{sond_ativas} votações ativas** no portal."); alertas+=1
+                    
+                if alertas == 0: st.info("Sem marcações na agenda.")
+
+    with tab_fracoes:
+        with st.container(border=True):
+            st.subheader(f"Evolução de Pagamentos por Fração [{ano_sel}]")
+            quotas_pagas_ano = session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all()
+            if quotas_pagas_ano:
+                df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração": f"Fr. {q.condomino.fracao}", "Valor Pago": q.valor} for q in quotas_pagas_ano])
+                df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
+                df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
+                
+                fig3 = px.bar(df_fracoes_grouped, x="Mês_Nome", y="Valor Pago", color="Fração", barmode="stack", text_auto=".0f")
+                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
+            else: st.info("Sem pagamentos registados.")
+
+    with tab_devedores:
+        with st.container(border=True):
+            st.subheader("⚠️ Dívidas ao Condomínio")
+            todas_dividas = session.query(Quota).filter_by(paga=False).all()
+            if todas_dividas:
+                df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
+                df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
+                
+                c_graf, c_tab = st.columns([1.5, 1])
+                with c_graf:
+                    fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation="h", text_auto=".2f", color="Valor Total", color_continuous_scale="Reds")
+                    fig4.update_layout(yaxis={"categoryorder":"total ascending"}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
+                with c_tab:
+                    st.dataframe(df_top, hide_index=True, column_config={"Quotas em Atraso": st.column_config.NumberColumn("Nº Quotas", format="%d"), "Valor Total": st.column_config.NumberColumn("Em Dívida (€)", format="%.2f €")}, use_container_width=True)
+            else:
+                st.success("🎉 Excelente! Não existem condóminos com dívidas ativas.")
 
 def pagina_acessos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -843,238 +1065,6 @@ def pagina_acessos():
                             st.session_state.form_key += 1
                             st.rerun()
         else: st.info("Sem moradores com acesso.")
-
-def pagina_dashboard():
-    import plotly.graph_objects as go
-    
-    mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
-    
-    st.title(":material/dashboard: Dashboard")
-    st.markdown(f"""
-    <div style="margin-top: -15px; margin-bottom: 20px;">
-        <p style="font-size: 18px; color: #64748b; font-weight: 500;">Período referente a {mes_sel} {ano_sel}</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    total_cond = session.query(Condomino).count()
-    saldo_total = (session.query(func.sum(Quota.valor)).filter_by(paga=True).scalar() or 0.0) + (session.query(func.sum(Movimento.valor)).filter_by(tipo="Receita").scalar() or 0.0) - (session.query(func.sum(Movimento.valor)).filter_by(tipo="Despesa").scalar() or 0.0)
-
-    valor_divida = session.query(func.sum(Quota.valor)).filter_by(paga=False).scalar() or 0.0
-    dividas_ativas = session.query(Quota).filter_by(paga=False).count()
-    ocs_pendentes = session.query(Ocorrencia).filter_by(resolvida=False).count()
-
-    cor_delta_divida = "normal" if dividas_ativas == 0 else "inverse"
-
-    col1.metric("Frações Registadas", total_cond)
-    col2.metric("Saldo de Caixa", f"{saldo_total:.2f} €")
-    col3.metric("Valor em Dívida", f"{valor_divida:.2f} €", f"{dividas_ativas} quotas atrasadas", delta_color=cor_delta_divida)
-    col4.metric("Ocorrências Abertas", ocs_pendentes)
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    tab_geral, tab_fracoes, tab_devedores = st.tabs([":material/pie_chart: Visão Global", ":material/bar_chart: Histórico de Receitas", ":material/warning: Análise de Incumprimento"])
-    meses_map = {"01":"Jan", "02":"Fev", "03":"Mar", "04":"Abr", "05":"Mai", "06":"Jun", "07":"Jul", "08":"Ago", "09":"Set", "10":"Out", "11":"Nov", "12":"Dez"}
-
-    with tab_geral:
-        c1, c2, c3 = st.columns(3)
-        
-        with c1:
-            with st.container(border=True):
-                st.subheader(f"Estado das Quotas [{ano_sel}]")
-                quotas_ano = session.query(Quota).filter(Quota.mes_ano.endswith(str(ano_sel))).all()
-                if quotas_ano:
-                    df_q = pd.DataFrame([{"Estado": "Pagas", "Valor": q.valor} if q.paga else {"Estado": "Em Dívida", "Valor": q.valor} for q in quotas_ano])
-                    fig1 = px.pie(df_q.groupby("Estado").sum().reset_index(), values="Valor", names="Estado", hole=0.4, color="Estado", color_discrete_map={"Pagas":"#2563eb", "Em Dívida":"#ef4444"})
-                    fig1.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
-                    
-                    total_gerado = sum(q.valor for q in quotas_ano)
-                    total_pago = sum(q.valor for q in quotas_ano if q.paga)
-                    if total_gerado > 0:
-                        taxa = (total_pago / total_gerado) * 100
-                        st.write(f"**Taxa de Cobrança Anual:** {taxa:.1f}%")
-                        st.progress(min(taxa / 100, 1.0))
-                else: st.info("Sem quotas geradas neste ano.")
-
-        with c2:
-            with st.container(border=True):
-                st.subheader(f"Receitas / Despesas [{ano_sel}]")
-                dados_grafico = [{"Mês": m.data[5:7], "Tipo": m.tipo, "Valor": m.valor} for m in session.query(Movimento).filter(Movimento.data.startswith(str(ano_sel))).all()]
-                dados_grafico.extend([{"Mês": q.data_pagamento[5:7], "Tipo": "Receita", "Valor": q.valor} for q in session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all() if q.data_pagamento])
-                if dados_grafico:
-                    df_fin_grouped = pd.DataFrame(dados_grafico).groupby(["Mês", "Tipo"]).sum().reset_index()
-                    df_fin_grouped["Mês_Nome"] = df_fin_grouped["Mês"].map(meses_map)
-                    fig2 = px.bar(df_fin_grouped, x="Mês_Nome", y="Valor", color="Tipo", barmode="group", color_discrete_map={"Receita":"#2563eb", "Despesa":"#ef4444"}, text_auto=".2f")
-                    fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="", margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
-                else: st.info("Sem dados financeiros registados.")
-                
-        with c3:
-            with st.container(border=True):
-                st.subheader(f"Orçamento [{ano_sel}]")
-                orc = session.query(Orcamento).filter_by(ano=ano_sel).first()
-                despesas_ano_lista = session.query(Movimento).filter(and_(Movimento.tipo == "Despesa", Movimento.data.startswith(str(ano_sel)))).all()
-                despesas_ano = sum(d.valor for d in despesas_ano_lista)
-                
-                if orc and orc.valor_anual > 0:
-                    fig_gauge = go.Figure(go.Indicator(
-                        mode="gauge+number",
-                        value=despesas_ano,
-                        number={"valueformat": ".2f", "suffix": " €"},
-                        domain={"x": [0, 1], "y": [0, 1]},
-                        gauge={
-                            "axis": {"range": [None, orc.valor_anual], "tickwidth": 1},
-                            "bar": {"color": "#1e293b"},
-                            "bgcolor": "white",
-                            "steps": [
-                                {"range": [0, orc.valor_anual * 0.7], "color": "#bbf7d0"},
-                                {"range": [orc.valor_anual * 0.7, orc.valor_anual * 0.9], "color": "#fef08a"},
-                                {"range": [orc.valor_anual * 0.9, orc.valor_anual * 1.5], "color": "#fecaca"}
-                            ],
-                            "threshold": {
-                                "line": {"color": "red", "width": 3},
-                                "thickness": 0.75,
-                                "value": orc.valor_anual
-                            }
-                        }
-                    ))
-                    fig_gauge.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", 
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(t=30, b=10, l=20, r=20),
-                        height=250
-                    )
-                    st.plotly_chart(fig_gauge, use_container_width=True, config={"displayModeBar": False})
-                    
-                    percentagem = (despesas_ano / orc.valor_anual) * 100
-                    if percentagem > 100:
-                        st.error(f"⚠️ Orçamento excedido em {percentagem - 100:.1f}%")
-                    elif percentagem > 90:
-                        st.warning("⚠️ Orçamento quase no limite!")
-                else: 
-                    st.info("⚠️ Orçamento não definido. Vá a 'Finanças' para definir o valor aprovado para este ano.")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        r2_c1, r2_c2, r2_c3 = st.columns(3)
-        
-        with r2_c1:
-            with st.container(border=True):
-                st.subheader("🍩 Categoria de Despesas")
-                if despesas_ano_lista:
-                    df_desp = pd.DataFrame([{"Categoria": d.descricao, "Valor": d.valor} for d in despesas_ano_lista])
-                    df_desp_grouped = df_desp.groupby("Categoria").sum().reset_index()
-                    
-                    fig_donut = px.pie(df_desp_grouped, values="Valor", names="Categoria", hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
-                    fig_donut.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)", 
-                        plot_bgcolor="rgba(0,0,0,0)", 
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5)
-                    )
-                    st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
-                else:
-                    st.info("Não existem despesas lançadas este ano para categorizar.")
-                    
-        with r2_c2:
-            with st.container(border=True):
-                st.subheader("📋 Ocorrências Pendentes")
-                ocs_lista = session.query(Ocorrencia).filter_by(resolvida=False).order_by(Ocorrencia.id.desc()).limit(5).all()
-                if ocs_lista:
-                    df_ocs_dash = pd.DataFrame([{"Data": o.data_criacao, "Assunto": o.titulo} for o in ocs_lista])
-                    st.dataframe(df_ocs_dash, hide_index=True, use_container_width=True)
-                    st.caption("Aceda ao menu 'Ocorrências' para gerir ou resolver estes pedidos.")
-                else:
-                    st.success("🎉 Excelente! Todas as ocorrências do prédio estão resolvidas.")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.container(border=True):
-                st.subheader("🛠️ Próximas Manutenções")
-                ints_lista = session.query(Intervencao).filter_by(concluida=False).order_by(Intervencao.data_agendada.asc()).limit(4).all()
-                if ints_lista:
-                    df_ints_dash = pd.DataFrame([{"Data Prevista": i.data_agendada, "Ação": i.titulo} for i in ints_lista])
-                    st.dataframe(df_ints_dash, hide_index=True, use_container_width=True)
-                else:
-                    st.success("✔️ Sem manutenções preventivas pendentes.")        
-                    
-        with r2_c3:
-            with st.container(border=True):
-                st.subheader("📅 Agenda & Comunidade")
-                ass_futuras = session.query(Assembleia).filter_by(realizada=False).order_by(Assembleia.data_agendada).limit(2).all()
-                sond_ativas = session.query(Sondagem).filter_by(ativa=True).count()
-                contratos_todos = session.query(Contrato).all()
-                
-                alertas_encontrados = False
-                
-                if st.session_state.perfil == "Admin" and contratos_todos:
-                    for c in contratos_todos:
-                        try:
-                            d_fim = datetime.strptime(c.data_fim, "%Y-%m-%d").date()
-                            dias_restantes = (d_fim - hoje).days
-                            if dias_restantes < 0:
-                                alertas_encontrados = True
-                                st.error(f"🚨 **Contrato Expirado:** '{c.titulo}' ({c.fornecedor.nome if c.fornecedor else ''}) expirou há {abs(dias_restantes)} dias!")
-                            elif 0 <= dias_restantes <= 30:
-                                alertas_encontrados = True
-                                st.warning(f"⚠️ **Contrato a Expirar:** '{c.titulo}' termina daqui a {dias_restantes} dias ({d_fim.strftime('%d/%m')}).")
-                        except Exception:
-                            pass
-
-                if ass_futuras:
-                    alertas_encontrados = True
-                    for a in ass_futuras:
-                        try:
-                            d_ass = datetime.strptime(a.data_agendada, "%Y-%m-%d").date()
-                            dias_restantes = (d_ass - hoje).days
-                            if dias_restantes == 0:
-                                st.warning(f"🚨 **Assembleia HOJE:** '{a.titulo}'")
-                            elif dias_restantes > 0:
-                                st.info(f"⏳ Faltam **{dias_restantes} dias** para: '{a.titulo}' ({d_ass.strftime('%d/%m/%Y')})")
-                            else:
-                                st.error(f"⚠️ Reunião atrasada por realizar: '{a.titulo}'")
-                        except Exception:
-                            st.info(f"📅 Reunião Agendada: '{a.titulo}' ({a.data_agendada})")
-                
-                if sond_ativas > 0:
-                    alertas_encontrados = True
-                    st.success(f"🗳️ Existem **{sond_ativas} votações ativas** a decorrer no portal dos moradores.")
-                    
-                if not alertas_encontrados:
-                    st.info("Sem avisos urgentes ou reuniões pendentes.")
-
-    with tab_fracoes:
-        with st.container(border=True):
-            st.subheader(f"Evolução de Pagamentos por Fração [{ano_sel}]")
-            quotas_pagas_ano = session.query(Quota).filter(and_(Quota.paga == True, Quota.data_pagamento.startswith(str(ano_sel)))).all()
-            if quotas_pagas_ano:
-                df_fracoes = pd.DataFrame([{"Mês": q.data_pagamento[5:7], "Fração": f"Fr. {q.condomino.fracao}", "Valor Pago": q.valor} for q in quotas_pagas_ano])
-                df_fracoes_grouped = df_fracoes.groupby(["Mês", "Fração"]).sum().reset_index()
-                df_fracoes_grouped["Mês_Nome"] = df_fracoes_grouped["Mês"].map(meses_map)
-                
-                fig3 = px.bar(df_fracoes_grouped, x="Mês_Nome", y="Valor Pago", color="Fração", barmode="stack", text_auto=".0f")
-                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", legend_title_text="Frações", margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
-            else: st.info("Sem pagamentos registados.")
-
-    with tab_devedores:
-        with st.container(border=True):
-            st.subheader("⚠️ Dívidas ao Condomínio")
-            todas_dividas = session.query(Quota).filter_by(paga=False).all()
-            if todas_dividas:
-                df_dividas = pd.DataFrame([{"Fração": d.condomino.fracao, "Proprietário": d.condomino.nome, "Quotas em Atraso": 1, "Valor Total": d.valor} for d in todas_dividas])
-                df_top = df_dividas.groupby(["Fração", "Proprietário"]).sum().reset_index().sort_values(by="Valor Total", ascending=False)
-                
-                c_graf, c_tab = st.columns([1.5, 1])
-                with c_graf:
-                    fig4 = px.bar(df_top.head(7), x="Valor Total", y="Fração", orientation="h", text_auto=".2f", color="Valor Total", color_continuous_scale="Reds")
-                    fig4.update_layout(yaxis={"categoryorder":"total ascending"}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=False, margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
-                with c_tab:
-                    st.dataframe(df_top, hide_index=True, column_config={"Quotas em Atraso": st.column_config.NumberColumn("Nº Quotas", format="%d"), "Valor Total": st.column_config.NumberColumn("Em Dívida (€)", format="%.2f €")}, use_container_width=True)
-            else:
-                st.success("🎉 Excelente! Não existem condóminos com dívidas ativas.")
 
 def pagina_condominos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
