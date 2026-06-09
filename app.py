@@ -588,9 +588,9 @@ def pagina_login():
             [data-testid="stHeader"] {{
                 display: none;
             }}
-            /* Aplica um filtro escuro (linear-gradient) por cima da imagem para melhorar o contraste */
+            /* Define a imagem estendida a 100% sem escurecer a imagem toda */
             .stApp {{
-                background-image: linear-gradient(rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.65)), url("data:image/png;base64,{bg_base64}");
+                background-image: url("data:image/png;base64,{bg_base64}");
                 background-size: cover;
                 background-position: center;
                 background-repeat: no-repeat;
@@ -600,24 +600,18 @@ def pagina_login():
                 padding-top: 4rem !important;
                 padding-bottom: 0rem !important;
             }}
-            /* Força a caixa de login a ser branca, muito opaca (95%) e com cantos arredondados */
+            /* Cria o 'quadrado em fade' escuro atrás do login para contraste perfeito */
             div[data-testid="stVerticalBlockBorderWrapper"] {{
-                background-color: rgba(255, 255, 255, 0.95) !important;
-                backdrop-filter: blur(10px);
-                border-radius: 16px !important;
-                padding: 15px !important;
-                border: 1px solid rgba(255, 255, 255, 0.5) !important;
-                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5) !important;
-            }}
-            /* Força o texto dentro da caixa de login a ser escuro para garantir leitura */
-            div[data-testid="stVerticalBlockBorderWrapper"] label, 
-            div[data-testid="stVerticalBlockBorderWrapper"] p {{
-                color: #1e293b !important;
+                background-color: rgba(255, 255, 255, 0.96) !important;
+                backdrop-filter: blur(6px);
+                border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                /* O segredo está aqui: uma sombra preta difusa gigante que cria um halo escuro ao redor do quadrado */
+                box-shadow: 0px 0px 100px 60px rgba(0, 0, 0, 0.6) !important;
             }}
         </style>
         """, unsafe_allow_html=True)
     else:
-        # CSS para o modo minimalista simples (sem imagem de fundo)
+        # CSS para o modo minimalista simples (sem imagem e com as cores originais)
         st.markdown("""
         <style>
             [data-testid="stHeader"] {
@@ -630,7 +624,7 @@ def pagina_login():
         </style>
         """, unsafe_allow_html=True)
 
-    # Subfunção interna para renderizar o formulário compacto e centralizado
+    # Subfunção interna para renderizar o formulário
     def render_formulario_core():
         with st.container(border=True):
             if os.path.exists("logo.png"):
@@ -638,9 +632,9 @@ def pagina_login():
                 with col_img: st.image("logo.png", use_container_width=True)
             
             st.markdown("""
-            <div style='text-align: center; margin-top: 15px;'>
+            <div style='text-align: center; margin-top: 5px;'>
                 <h3 style='margin-bottom: 0px; color: #1e293b;'>Acesso Reservado</h3>
-                <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 25px;'>Introduza as suas credenciais</p>
+                <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -695,20 +689,20 @@ def pagina_login():
     col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
     
     with col_centro:
-        # Controlo de cores e sombras do texto baseando-se na existência ou não do fundo gráfico
         if has_bg:
             text_color_title = "#ffffff"
-            text_color_subtitle = "#e2e8f0"
-            shadow_style = "text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.9);"
+            text_color_subtitle = "#f1f5f9"
+            # Sombra forte radiante para os textos acompanharem o fade do quadrado
+            shadow_style = "text-shadow: 0px 2px 15px rgba(0,0,0,0.8), 0px 0px 30px rgba(0,0,0,0.9);"
         else:
             text_color_title = "#1e293b"
             text_color_subtitle = "#64748b"
             shadow_style = ""
 
         st.markdown(f"""
-        <div style='text-align: center; margin-bottom: 25px; {shadow_style}'>
-            <h1 style='color: {text_color_title}; margin-bottom: 5px; font-size: 32px; font-weight: bold;'>{titulo_login}</h1>
-            <p style='color: {text_color_subtitle}; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
+        <div style='text-align: center; margin-bottom: 20px; {shadow_style}'>
+            <h1 style='color: {text_color_title}; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
+            <p style='color: {text_color_subtitle}; font-size: 15px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
         </div>
         """, unsafe_allow_html=True)
         
