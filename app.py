@@ -588,6 +588,7 @@ def pagina_login():
             [data-testid="stHeader"] {{
                 display: none;
             }}
+            /* Imagem de fundo em ecrã total */
             .stApp {{
                 background-image: url("data:image/png;base64,{bg_base64}");
                 background-size: cover;
@@ -596,32 +597,63 @@ def pagina_login():
                 background-attachment: fixed;
             }}
             .block-container {{
-                padding-top: 2rem !important; /* Ligeiramente reduzido para aproximar do topo */
+                padding-top: 2rem !important;
                 padding-bottom: 0rem !important;
             }}
+            
+            /* =========================================================
+               MELHORIAS DE CORES QUANDO A IMAGEM DE FUNDO ESTÁ ATIVA
+               ========================================================= */
+            /* 1. Forçar a caixa de login a ser branca sólida para total isolamento da foto */
             div[data-testid="stVerticalBlockBorderWrapper"] {{
-                background-color: rgba(255, 255, 255, 0.96) !important;
-                backdrop-filter: blur(6px);
-                border: 1px solid rgba(255, 255, 255, 0.2) !important;
-                box-shadow: 0px 0px 100px 60px rgba(0, 0, 0, 0.6) !important;
+                background-color: #ffffff !important;
+                border: 1px solid #e2e8f0 !important;
+                border-radius: 16px !important;
+                padding: 20px !important;
+                box-shadow: 0px 15px 45px rgba(0, 0, 0, 0.6) !important;
+            }}
+            
+            /* 2. Forçar coerência total nas letras internas (Escuras e Legíveis) */
+            div[data-testid="stVerticalBlockBorderWrapper"] h3,
+            div[data-testid="stVerticalBlockBorderWrapper"] p,
+            div[data-testid="stVerticalBlockBorderWrapper"] label,
+            div[data-testid="stVerticalBlockBorderWrapper"] span,
+            div[data-testid="stVerticalBlockBorderWrapper"] details summary {{
+                color: #0f172a !important;
+                font-weight: 500 !important;
+                text-shadow: none !important;
+            }}
+            
+            /* 3. Dar destaque absoluto aos campos de input para sobressaírem na caixa */
+            div[data-testid="stVerticalBlockBorderWrapper"] input {{
+                background-color: #f1f5f9 !important; /* Fundo cinza claro contrastante */
+                color: #0f172a !important; /* Texto digitado escuro */
+                border: 1px solid #cbd5e1 !important; /* Borda bem definida */
+                border-radius: 8px !important;
+                padding: 10px !important;
+            }}
+            
+            /* Ajuste de cor do texto informativo do expander */
+            div[data-testid="stVerticalBlockBorderWrapper"] .stAlert p {{
+                color: #1e3a8a !important;
             }}
         </style>
         """, unsafe_allow_html=True)
     else:
-        # CSS para o modo minimalista simples
+        # CSS para o modo minimalista simples (Exatamente como estava, intocado!)
         st.markdown("""
         <style>
             [data-testid="stHeader"] {
                 display: none;
             }
             .block-container {
-                padding-top: 1rem !important; /* <--- ALTERADO AQUI: Reduzido de 4rem para 1rem para cortar o espaço em branco */
+                padding-top: 1rem !important;
                 padding-bottom: 0rem !important;
             }
         </style>
         """, unsafe_allow_html=True)
 
-    # Subfunção interna para renderizar o formulário
+    # Subfunção interna para renderizar o formulário de login
     def render_formulario_core():
         with st.container(border=True):
             if os.path.exists("logo.png"):
@@ -630,8 +662,8 @@ def pagina_login():
             
             st.markdown("""
             <div style='text-align: center; margin-top: 5px;'>
-                <h3 style='margin-bottom: 0px; color: #1e293b;'>Acesso Reservado</h3>
-                <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
+                <h3 style='margin-bottom: 0px;'>Acesso Reservado</h3>
+                <p style='font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -678,7 +710,7 @@ def pagina_login():
                             
         st.markdown("""
         <div style='text-align: center; margin-top: 15px;'>
-            <p style='color: #94a3b8; font-size: 11px; text-shadow: none;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
+            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
         </div>
         """, unsafe_allow_html=True)
 
