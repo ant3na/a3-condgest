@@ -561,45 +561,16 @@ def configurar_sidebar():
 
     st.sidebar.subheader(":material/schedule: Filtros de Tempo")
     
-    # --- 1. GARANTIR A INICIALIZAÇÃO CORRETA COM A DATA DE HOJE ---
-    # Isto força o sistema a arrancar sempre no Mês/Ano atuais
+    # Garantir inicialização robusta com base no mês e ano atuais
     if "filtro_mes" not in st.session_state:
         st.session_state["filtro_mes"] = meses[hoje.month - 1]
     if "filtro_ano" not in st.session_state:
         st.session_state["filtro_ano"] = hoje.year
 
-    # --- 2. BOTÕES DE ACESSO RÁPIDO ---
-    c_ant, c_hoje, c_seg = st.sidebar.columns([1, 1.2, 1])
-    
-    if c_ant.button("◀ Mês", use_container_width=True, help="Retroceder para o mês anterior"):
-        idx = meses.index(st.session_state["filtro_mes"])
-        if idx == 0:
-            st.session_state["filtro_mes"] = meses[11]
-            st.session_state["filtro_ano"] -= 1
-        else:
-            st.session_state["filtro_mes"] = meses[idx - 1]
-        st.rerun()
-        
-    if c_hoje.button("📅 Atual", use_container_width=True, help="Saltar rapidamente para o mês de hoje"):
-        st.session_state["filtro_mes"] = meses[hoje.month - 1]
-        st.session_state["filtro_ano"] = hoje.year
-        st.rerun()
-        
-    if c_seg.button("Mês ▶", use_container_width=True, help="Avançar para o mês seguinte"):
-        idx = meses.index(st.session_state["filtro_mes"])
-        if idx == 11:
-            st.session_state["filtro_mes"] = meses[0]
-            st.session_state["filtro_ano"] += 1
-        else:
-            st.session_state["filtro_mes"] = meses[idx + 1]
-        st.rerun()
-
-    # --- 3. WIDGETS CONTROLADOS EXCLUSIVAMENTE PELA SESSÃO ---
-    # (Sem os parâmetros 'index' e 'value' para evitar resets indesejados)
+    # Widgets acoplados ao session_state para manter a reatividade correta e evitar resets indesejados
     mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses, key="filtro_mes")
     ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, max_value=2100, step=1, key="filtro_ano")
     
-    # --- 4. CÁLCULO DAS VARIÁVEIS DE TEMPO ---
     idx_mes = meses.index(mes_sel) + 1
     str_inicio = f"{ano_sel}-{idx_mes:02d}-01"
     str_fim = f"{ano_sel if idx_mes < 12 else ano_sel+1}-{idx_mes+1 if idx_mes < 12 else 1:02d}-01"
@@ -609,6 +580,7 @@ def configurar_sidebar():
     st.sidebar.caption("💡 **Dica:** Altere entre o Modo Claro e Escuro clicando nos **⋮** no canto superior direito > **Settings** > **Theme**.")
     
     return mes_sel, ano_sel, str_inicio, str_fim, mes_str
+
 # ==========================================
 # MÓDULOS DE PÁGINAS
 # ==========================================
@@ -1159,7 +1131,7 @@ def pagina_acessos():
                                 except Exception as e2: 
                                     session.rollback()
                                     st.error(f"Erro técnico na base de dados: {str(e2)}")
-                            if sucesso: st.session_state.toast = (msg_toast, "✅"); st.rerun()
+                            ifsucesso: st.session_state.toast = (msg_toast, "✅"); st.rerun()
                     else:
                         c1, c2 = st.columns(2)
                         if c1.button("Repor Password para 'mudar123'", width="stretch"): 
@@ -1320,7 +1292,7 @@ def pagina_condominos():
                         obj.nome, obj.fracao, obj.nif, obj.telefone, obj.email, obj.permilagem = n, f, nif_input, t, e, p
                         session.commit()
                         registar_auditoria("ATUALIZAR", "Condóminos", f"Editou os dados da fração {f} ({n}).")
-                        st.session_state.toast = ("Condómino atualizado!", "✏️")
+                        st.session_state.toast = ("Condómino updated!", "✏️")
                     else:
                         session.add(Condomino(nome=n, fracao=f, nif=nif_input, telefone=t, email=e, permilagem=p))
                         session.commit()
@@ -1382,7 +1354,7 @@ def pagina_quotas():
         with st.container(border=True):
             st.subheader(":material/precision_manufacturing: Gerador de Quotas")
             if len(condominos_sem_quota) > 0: st.warning(f"O sistema detetou **{len(condominos_sem_quota)} fração(ões)** sem quota processada neste mês.")
-            else: st.success(f"As quotas do mês {mes_str} já estão processadas.")
+            else: st.success(f"As quotas do mês {mes_str} ya se encontram processadas.")
             if not st.session_state.modo_leitura:
                 col1, col2 = st.columns(2)
                 with col1:
@@ -2701,6 +2673,24 @@ def pagina_configuracoes():
                 st.info("Ainda não existem registos de auditoria registados no sistema.")
 
 # ==========================================
+# INTERCETOR INTELIGENTE DE TRANSIÇÃO DE MENUS
+# ==========================================
+def criar_pagina_segura(func_pagina, nome_pagina):
+    def wrapper():
+        if "ultima_pagina_vista" not in st.session_state:
+            st.session_state.ultima_pagina_vista = nome_pagina
+        
+        # Inovação: Se o utilizador navegou para OUTRO menu, força o reset do calendário para a data atual de hoje
+        if st.session_state.ultima_pagina_vista != nome_pagina:
+            st.session_state["filtro_mes"] = meses[hoje.month - 1]
+            st.session_state["filtro_ano"] = hoje.year
+            st.session_state.ultima_pagina_vista = nome_pagina
+            st.rerun()
+            
+        func_pagina()
+    return wrapper
+
+# ==========================================
 # MOTOR DE NAVEGAÇÃO E CONTROLO DE ACESSOS
 # ==========================================
 if not st.session_state.logado:
@@ -2709,50 +2699,50 @@ else:
     if st.session_state.perfil == "Admin":
         pg = st.navigation({
             "VISÃO GERAL": [
-                st.Page(pagina_dashboard, title="Dashboard", icon=":material/dashboard:", default=True), 
-                st.Page(pagina_condominos, title="Condóminos", icon=":material/group:")
+                st.Page(criar_pagina_segura(pagina_dashboard, "Dashboard"), title="Dashboard", icon=":material/dashboard:", default=True), 
+                st.Page(criar_pagina_segura(pagina_condominos, "Condóminos"), title="Condóminos", icon=":material/group:")
             ],
             "TESOURARIA": [
-                st.Page(pagina_quotas, title="Gestão de Quotas", icon=":material/payments:"), 
-                st.Page(pagina_financas, title="Finanças & Extratos", icon=":material/account_balance:"), 
-                st.Page(pagina_recibos, title="Emissão de Recibos", icon=":material/receipt_long:")
+                st.Page(criar_pagina_segura(pagina_quotas, "Gestão de Quotas"), title="Gestão de Quotas", icon=":material/payments:"), 
+                st.Page(criar_pagina_segura(pagina_financas, "Finanças & Extratos"), title="Finanças & Extratos", icon=":material/account_balance:"), 
+                st.Page(criar_pagina_segura(pagina_recibos, "Emissão de Recibos"), title="Emissão de Recibos", icon=":material/receipt_long:")
             ],
             "OPERAÇÕES & COMUNIDADE": [
-                st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"),
-                st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"),
-                st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"),
-                st.Page(pagina_fornecedores, title="Fornecedores e Contratos", icon=":material/contact_phone:"),
-                st.Page(pagina_ocorrencias, title="Ocorrências", icon=":material/build:")
+                st.Page(criar_pagina_segura(pagina_mural, "Mural da Comunidade"), title="Mural da Comunidade", icon=":material/forum:"),
+                st.Page(criar_pagina_segura(pagina_assembleias, "Assembleias & Votações"), title="Assembleias & Votações", icon=":material/diversity_3:"),
+                st.Page(criar_pagina_segura(pagina_documentos, "Arquivo Digital"), title="Arquivo Digital", icon=":material/folder_open:"),
+                st.Page(criar_pagina_segura(pagina_fornecedores, "Fornecedores e Contratos"), title="Fornecedores e Contratos", icon=":material/contact_phone:"),
+                st.Page(criar_pagina_segura(pagina_ocorrencias, "Ocorrências"), title="Ocorrências", icon=":material/build:")
             ],
             "SISTEMA": [
-                st.Page(pagina_acessos, title="Gestão de Acessos", icon=":material/admin_panel_settings:"),
-                st.Page(pagina_configuracoes, title="Configurações", icon=":material/settings:")
+                st.Page(criar_pagina_segura(pagina_acessos, "Gestão de Acessos"), title="Gestão de Acessos", icon=":material/admin_panel_settings:"),
+                st.Page(criar_pagina_segura(pagina_configuracoes, "Configurações"), title="Configurações", icon=":material/settings:")
             ]
         })
     else: 
         nav_morador = {
             "A MINHA CONTA": [
-                st.Page(pagina_dashboard_morador, title="Conta Corrente", icon=":material/home:", default=True)
+                st.Page(criar_pagina_segura(pagina_dashboard_morador, "Conta Corrente"), title="Conta Corrente", icon=":material/home:", default=True)
             ]
         }
         
         vg_pages = []
-        if st.session_state.perm_dashboard: vg_pages.append(st.Page(pagina_dashboard, title="Dashboard", icon=":material/dashboard:"))
-        if st.session_state.perm_condominos: vg_pages.append(st.Page(pagina_condominos, title="Condóminos", icon=":material/group:"))
+        if st.session_state.perm_dashboard: vg_pages.append(st.Page(criar_pagina_segura(pagina_dashboard, "Dashboard"), title="Dashboard", icon=":material/dashboard:"))
+        if st.session_state.perm_condominos: vg_pages.append(st.Page(criar_pagina_segura(pagina_condominos, "Condóminos"), title="Condóminos", icon=":material/group:"))
         if vg_pages: nav_morador["DASHBOARD GLOBAL"] = vg_pages
         
         tes_pages = []
-        if st.session_state.perm_quotas: tes_pages.append(st.Page(pagina_quotas, title="Gestão de Quotas", icon=":material/payments:"))
-        if st.session_state.perm_financas: tes_pages.append(st.Page(pagina_financas, title="Finanças & Extratos", icon=":material/account_balance:"))
-        if st.session_state.perm_recibos: tes_pages.append(st.Page(pagina_recibos, title="Emissão de Recibos", icon=":material/receipt_long:"))
+        if st.session_state.perm_quotas: tes_pages.append(st.Page(criar_pagina_segura(pagina_quotas, "Gestão de Quotas"), title="Gestão de Quotas", icon=":material/payments:"))
+        if st.session_state.perm_financas: tes_pages.append(st.Page(criar_pagina_segura(pagina_financas, "Finanças & Extratos"), title="Finanças & Extratos", icon=":material/account_balance:"))
+        if st.session_state.perm_recibos: tes_pages.append(st.Page(criar_pagina_segura(pagina_recibos, "Emissão de Recibos"), title="Emissão de Recibos", icon=":material/receipt_long:"))
         if tes_pages: nav_morador["TESOURARIA PÚBLICA"] = tes_pages
             
         op_pages = []
-        if st.session_state.perm_mural: op_pages.append(st.Page(pagina_mural, title="Mural da Comunidade", icon=":material/forum:"))
-        if st.session_state.perm_assembleias: op_pages.append(st.Page(pagina_assembleias, title="Assembleias & Votações", icon=":material/diversity_3:"))
-        if st.session_state.perm_arquivo: op_pages.append(st.Page(pagina_documentos, title="Arquivo Digital", icon=":material/folder_open:"))
-        if st.session_state.perm_fornecedores: op_pages.append(st.Page(pagina_fornecedores, title="Fornecedores", icon=":material/contact_phone:"))
-        if st.session_state.perm_ocorrencias: op_pages.append(st.Page(pagina_ocorrencias, title="Ocorrências", icon=":material/build:"))
+        if st.session_state.perm_mural: op_pages.append(st.Page(criar_pagina_segura(pagina_mural, "Mural da Comunidade"), title="Mural da Comunidade", icon=":material/forum:"))
+        if st.session_state.perm_assembleias: op_pages.append(st.Page(criar_pagina_segura(pagina_assembleias, "Assembleias & Votações"), title="Assembleias & Votações", icon=":material/diversity_3:"))
+        if st.session_state.perm_arquivo: op_pages.append(st.Page(criar_pagina_segura(pagina_documentos, "Arquivo Digital"), title="Arquivo Digital", icon=":material/folder_open:"))
+        if st.session_state.perm_fornecedores: op_pages.append(st.Page(criar_pagina_segura(pagina_fornecedores, "Fornecedores"), title="Fornecedores", icon=":material/contact_phone:"))
+        if st.session_state.perm_ocorrencias: op_pages.append(st.Page(criar_pagina_segura(pagina_ocorrencias, "Ocorrências"), title="Ocorrências", icon=":material/build:"))
         if op_pages: nav_morador["CONDOMÍNIO"] = op_pages
             
         pg = st.navigation(nav_morador)
