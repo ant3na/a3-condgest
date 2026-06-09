@@ -582,17 +582,18 @@ def pagina_login():
     col_imagem, col_form = st.columns([1.3, 1], gap="large")
     
     with col_imagem:
-        # Exibe a imagem de fundo local. Se não existir, usa uma imagem premium por defeito
+        # Só exibe a imagem se o ficheiro físico existir localmente
         if os.path.exists("bg_login.png"):
             st.image("bg_login.png", use_container_width=True)
-        else:
-            st.image("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
             
         # Puxa o título diretamente das configurações guardadas pelo Admin
         titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
         
+        # Espaçamento superior ligeiramente maior se não houver imagem para equilibrar o design
+        margin_top = "10px" if os.path.exists("bg_login.png") else "60px"
+        
         st.markdown(f"""
-        <div style='margin-top: 10px; padding-left: 5px;'>
+        <div style='margin-top: {margin_top}; padding-left: 5px;'>
             <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
             <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
         </div>
@@ -604,12 +605,13 @@ def pagina_login():
             return
             
         with st.container(border=True):
+            # Só exibe o logótipo se o ficheiro físico existir localmente
             if os.path.exists("logo.png"):
                 col_esp, col_img, col_esp2 = st.columns([1, 1.5, 1])
                 with col_img: st.image("logo.png", use_container_width=True)
             
             st.markdown("""
-            <div style='text-align: center;'>
+            <div style='text-align: center; margin-top: 10px;'>
                 <h3 style='margin-bottom: 0px; color: #1e293b;'>Acesso Reservado</h3>
                 <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
             </div>
@@ -658,7 +660,7 @@ def pagina_login():
                             
         st.markdown("""
         <div style='text-align: center; margin-top: 15px;'>
-            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.6 Premium</p>
+            <p style='color: #94a3b8; font-size: 11px;'>© 2026 A3 Technologies | Versão 2.5 Premium</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -2243,7 +2245,7 @@ def pagina_configuracoes():
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # --- NOVO PAINEL DE BRANDING APENAS PARA O ADMIN DENTRO DO SISTEMA ---
+            # --- PAINEL DE BRANDING COM OPÇÃO DE REMOÇÃO TOTAL ---
             with st.container(border=True):
                 st.subheader("🎨 Identidade Visual & Branding")
                 st.write("Faça a gestão das imagens de marca do portal de condomínio.")
@@ -2254,7 +2256,15 @@ def pagina_configuracoes():
                     st.markdown("**Logótipo Principal (`logo.png`)**")
                     if os.path.exists("logo.png"):
                         st.image("logo.png", width=120)
-                    up_logo = st.file_uploader("Substituir logótipo", type=["png", "jpg", "jpeg"], key="cfg_up_logo")
+                        # Botão para apagar o logótipo
+                        if st.button("❌ Remover Logótipo Atual", key="btn_clear_logo", width="stretch"):
+                            os.remove("logo.png")
+                            registar_auditoria("APAGAR", "Configurações", "Removeu o logótipo oficial do sistema.")
+                            st.rerun()
+                    else:
+                        st.caption("ℹ️ Nenhum logótipo configurado (ecrã em modo simples).")
+                        
+                    up_logo = st.file_uploader("Carregar novo logótipo", type=["png", "jpg", "jpeg"], key="cfg_up_logo")
                     if up_logo is not None:
                         if st.button("Aplicar Novo Logótipo", width="stretch", type="primary"):
                             with open("logo.png", "wb") as f:
@@ -2266,7 +2276,15 @@ def pagina_configuracoes():
                     st.markdown("**Imagem do Fundo de Login (`bg_login.png`)**")
                     if os.path.exists("bg_login.png"):
                         st.image("bg_login.png", width=180)
-                    up_bg = st.file_uploader("Substituir imagem de login", type=["png", "jpg", "jpeg"], key="cfg_up_bg")
+                        # Botão para apagar o fundo de login
+                        if st.button("❌ Remover Fundo de Login", key="btn_clear_bg", width="stretch"):
+                            os.remove("bg_login.png")
+                            registar_auditoria("APAGAR", "Configurações", "Removeu a imagem de fundo do login.")
+                            st.rerun()
+                    else:
+                        st.caption("ℹ️ Nenhuma imagem de fundo configurada (ecrã em modo simples).")
+                        
+                    up_bg = st.file_uploader("Carregar nova imagem de login", type=["png", "jpg", "jpeg"], key="cfg_up_bg")
                     if up_bg is not None:
                         if st.button("Aplicar Novo Fundo de Login", width="stretch", type="primary"):
                             with open("bg_login.png", "wb") as f:
