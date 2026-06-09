@@ -717,7 +717,31 @@ def pagina_dashboard_morador():
     st.markdown("<br>", unsafe_allow_html=True)
     
     if config.get("AVISO_ATIVO") and config.get("AVISO_GLOBAL"):
-        st.info(f"📢 **Aviso da Administração:**\n\n{config['AVISO_GLOBAL']}")
+        # Converte as quebras de linha do texto para tags HTML para manter a formatação
+        texto_aviso = config["AVISO_GLOBAL"].replace("\n", "<br>")
+        
+        st.markdown(f"""
+        <div style="
+            background-color: #eff6ff; 
+            border-left: 6px solid #3b82f6; 
+            border-radius: 8px; 
+            padding: 16px 20px; 
+            margin-bottom: 25px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: flex-start;
+        ">
+            <div style="font-size: 26px; margin-right: 15px; line-height: 1;">📢</div>
+            <div>
+                <h4 style="margin-top: 0; margin-bottom: 8px; color: #1e3a8a; font-size: 16px; font-weight: 600;">
+                    Aviso da Administração
+                </h4>
+                <p style="margin: 0; color: #334155; font-size: 14px; line-height: 1.5;">
+                    {texto_aviso}
+                </p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # --- NOVO: GAMIFICAÇÃO / BARRA DE PROGRESSO ANUAL ---
     with st.container(border=True):
