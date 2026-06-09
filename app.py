@@ -2059,7 +2059,7 @@ def pagina_assembleias():
                     
                     if st.session_state.perfil == "Admin" and not st.session_state.modo_leitura:
                         if not r.realizada:
-                            if col_act.button("Mark Realizada", key=f"real_{r.id}", width="stretch"): 
+                            if col_act.button("Marcar como Realizada", key=f"real_{r.id}", width="stretch"): 
                                 r.realizada = True; session.commit()
                                 registar_auditoria("ATUALIZAR", "Assembleias", f"Fechou a assembleia '{r.titulo}' como REALIZADA.")
                                 st.rerun()
