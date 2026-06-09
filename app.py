@@ -577,21 +577,54 @@ def configurar_sidebar():
 # MÓDULOS DE PÁGINAS
 # ==========================================
 def pagina_login():
-    # --- CSS EXCLUSIVO DA PÁGINA DE LOGIN ---
-    # Esconde o cabeçalho padrão, reduz o espaço vazio e tenta bloquear o scroll desnecessário
-    st.markdown("""
-    <style>
-        [data-testid="stHeader"] {
-            display: none;
-        }
-        .block-container {
-            padding-top: 2rem !important;
-            padding-bottom: 0rem !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    has_bg = os.path.exists("bg_login.png")
+    titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
 
-    # Subfunção para renderizar o formulário de forma idêntica em ambos os layouts
+    # --- CSS DINÂMICO E EXCLUSIVO DA PÁGINA DE LOGIN ---
+    if has_bg:
+        # Converte a imagem local para Base64 para injetar no CSS de fundo
+        bg_base64 = get_image_base64("bg_login.png")
+        st.markdown(f"""
+        <style>
+            [data-testid="stHeader"] {{
+                display: none;
+            }}
+            /* Define a imagem estendida a 100% de largura e altura sem scroll */
+            .stApp {{
+                background-image: url("data:image/png;base64,{bg_base64}");
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+                background-attachment: fixed;
+            }}
+            .block-container {{
+                padding-top: 4rem !important;
+                padding-bottom: 0rem !important;
+            }}
+            /* Torna a caixa de login ligeiramente translúcida com efeito blur (vidro fosco) */
+            div[data-testid="stVerticalBlockBorderWrapper"] {{
+                background-color: rgba(255, 255, 255, 0.96) !important;
+                backdrop-filter: blur(6px);
+                border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.2) !important;
+            }}
+        </style>
+        """, unsafe_allow_html=True)
+    else:
+        # CSS para o modo minimalista simples (sem imagem de fundo)
+        st.markdown("""
+        <style>
+            [data-testid="stHeader"] {
+                display: none;
+            }
+            .block-container {
+                padding-top: 4rem !important;
+                padding-bottom: 0rem !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+    # Subfunção interna para renderizar o formulário compacto e centralizado
     def render_formulario_core():
         with st.container(border=True):
             if os.path.exists("logo.png"):
@@ -652,37 +685,28 @@ def pagina_login():
         </div>
         """, unsafe_allow_html=True)
 
-    # --- CONTROLO DINÂMICO DE LAYOUT ---
-    has_bg = os.path.exists("bg_login.png")
-    titulo_login = config.get("TITULO_LOGIN", "A3® Portal do Condomínio")
+    # --- LAYOUT 100% CENTRALIZADO E COMPACTO ---
+    col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
+    
+    with col_centro:
+        # Controlo de cores e sombras do texto baseando-se na existência ou não do fundo gráfico
+        if has_bg:
+            text_color_title = "#ffffff"
+            text_color_subtitle = "#f1f5f9"
+            shadow_style = "text-shadow: 0px 2px 10px rgba(0, 0, 0, 0.85);"
+        else:
+            text_color_title = "#1e293b"
+            text_color_subtitle = "#64748b"
+            shadow_style = ""
 
-    if has_bg:
-        # Layout 1: Ecrã Dividido (Split Screen) com imagem à esquerda
-        col_imagem, col_side = st.columns([1.4, 1], gap="large")
-        with col_imagem:
-            st.image("bg_login.png", use_container_width=True)
-            st.markdown(f"""
-            <div style='margin-top: 5px; padding-left: 5px;'>
-                <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
-                <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_side:
-            _, col_form_ajustado, _ = st.columns([0.05, 0.9, 0.05])
-            with col_form_ajustado:
-                render_formulario_core()
-    else:
-        # Layout 2: Ecrã Minimalista 100% Centralizado e Quadro de Login ainda mais limpo
-        st.markdown("<br>", unsafe_allow_html=True) # Apenas um pequeno respiro no topo para centrar
-        col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
-        with col_centro:
-            st.markdown(f"""
-            <div style='text-align: center; margin-bottom: 20px;'>
-                <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
-                <p style='color: #64748b; font-size: 15px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            render_formulario_core()
+        st.markdown(f"""
+        <div style='text-align: center; margin-bottom: 20px; {shadow_style}'>
+            <h1 style='color: {text_color_title}; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
+            <p style='color: {text_color_subtitle}; font-size: 15px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        render_formulario_core()
         
 def pagina_dashboard_morador():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
