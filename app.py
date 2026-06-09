@@ -577,8 +577,20 @@ def configurar_sidebar():
 # MÓDULOS DE PÁGINAS
 # ==========================================
 def pagina_login():
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    
+    # --- CSS EXCLUSIVO DA PÁGINA DE LOGIN ---
+    # Esconde o cabeçalho padrão, reduz o espaço vazio e tenta bloquear o scroll desnecessário
+    st.markdown("""
+    <style>
+        [data-testid="stHeader"] {
+            display: none;
+        }
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 0rem !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     # Subfunção para renderizar o formulário de forma idêntica em ambos os layouts
     def render_formulario_core():
         with st.container(border=True):
@@ -587,7 +599,7 @@ def pagina_login():
                 with col_img: st.image("logo.png", use_container_width=True)
             
             st.markdown("""
-            <div style='text-align: center; margin-top: 10px;'>
+            <div style='text-align: center; margin-top: 5px;'>
                 <h3 style='margin-bottom: 0px; color: #1e293b;'>Acesso Reservado</h3>
                 <p style='color: #64748b; font-size: 14px; margin-top: 5px; margin-bottom: 20px;'>Introduza as suas credenciais</p>
             </div>
@@ -632,7 +644,7 @@ def pagina_login():
                             st.error("❌ Credenciais incorretas. Tente novamente.")
             
             with st.expander("Esqueceu-se da password?", expanded=False):
-                st.info("ℹ️ Por motivos de segurança, a reposição de passwords é feita pela Administração. Por favor, contacte o seu administrador de condomínio para repor o seu acesso.")
+                st.info("ℹ️ Por motivos de segurança, a reposição de passwords é feita pela Administração.")
                             
         st.markdown("""
         <div style='text-align: center; margin-top: 15px;'>
@@ -650,22 +662,22 @@ def pagina_login():
         with col_imagem:
             st.image("bg_login.png", use_container_width=True)
             st.markdown(f"""
-            <div style='margin-top: 10px; padding-left: 5px;'>
+            <div style='margin-top: 5px; padding-left: 5px;'>
                 <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
                 <p style='color: #64748b; font-size: 16px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
             </div>
             """, unsafe_allow_html=True)
         with col_side:
-            # Subcolunas internas para encolher ligeiramente a caixa de login (torna-a mais compacta)
             _, col_form_ajustado, _ = st.columns([0.05, 0.9, 0.05])
             with col_form_ajustado:
                 render_formulario_core()
     else:
-        # Layout 2: Ecrã Minimalista 100% Centralizado e Quadro de Login mais pequeno
+        # Layout 2: Ecrã Minimalista 100% Centralizado e Quadro de Login ainda mais limpo
+        st.markdown("<br>", unsafe_allow_html=True) # Apenas um pequeno respiro no topo para centrar
         col_esquerda, col_centro, col_direita = st.columns([1, 0.85, 1])
         with col_centro:
             st.markdown(f"""
-            <div style='text-align: center; margin-bottom: 25px; margin-top: 40px;'>
+            <div style='text-align: center; margin-bottom: 20px;'>
                 <h1 style='color: #1e293b; margin-bottom: 5px; font-size: 32px;'>{titulo_login}</h1>
                 <p style='color: #64748b; font-size: 15px; margin-top: 0;'>Uma plataforma moderna e transparente para a gestão do seu condomínio.</p>
             </div>
