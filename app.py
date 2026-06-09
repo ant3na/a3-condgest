@@ -561,43 +561,45 @@ def configurar_sidebar():
 
     st.sidebar.subheader(":material/schedule: Filtros de Tempo")
     
-    # --- INOVAÇÃO: AÇÕES RÁPIDAS (Quick Presets) ---
-    # Inicializa os valores padrão na memória da sessão na primeira visita
+    # --- 1. GARANTIR A INICIALIZAÇÃO CORRETA COM A DATA DE HOJE ---
+    # Isto força o sistema a arrancar sempre no Mês/Ano atuais
     if "filtro_mes" not in st.session_state:
-        st.session_state.filtro_mes = meses[hoje.month - 1]
+        st.session_state["filtro_mes"] = meses[hoje.month - 1]
     if "filtro_ano" not in st.session_state:
-        st.session_state.filtro_ano = hoje.year
+        st.session_state["filtro_ano"] = hoje.year
 
-    # Criar a barra de navegação rápida (3 colunas compactas)
+    # --- 2. BOTÕES DE ACESSO RÁPIDO ---
     c_ant, c_hoje, c_seg = st.sidebar.columns([1, 1.2, 1])
     
     if c_ant.button("◀ Mês", use_container_width=True, help="Retroceder para o mês anterior"):
-        idx = meses.index(st.session_state.filtro_mes)
+        idx = meses.index(st.session_state["filtro_mes"])
         if idx == 0:
-            st.session_state.filtro_mes = meses[11]
-            st.session_state.filtro_ano -= 1
+            st.session_state["filtro_mes"] = meses[11]
+            st.session_state["filtro_ano"] -= 1
         else:
-            st.session_state.filtro_mes = meses[idx - 1]
+            st.session_state["filtro_mes"] = meses[idx - 1]
         st.rerun()
         
     if c_hoje.button("📅 Atual", use_container_width=True, help="Saltar rapidamente para o mês de hoje"):
-        st.session_state.filtro_mes = meses[hoje.month - 1]
-        st.session_state.filtro_ano = hoje.year
+        st.session_state["filtro_mes"] = meses[hoje.month - 1]
+        st.session_state["filtro_ano"] = hoje.year
         st.rerun()
         
     if c_seg.button("Mês ▶", use_container_width=True, help="Avançar para o mês seguinte"):
-        idx = meses.index(st.session_state.filtro_mes)
+        idx = meses.index(st.session_state["filtro_mes"])
         if idx == 11:
-            st.session_state.filtro_mes = meses[0]
-            st.session_state.filtro_ano += 1
+            st.session_state["filtro_mes"] = meses[0]
+            st.session_state["filtro_ano"] += 1
         else:
-            st.session_state.filtro_mes = meses[idx + 1]
+            st.session_state["filtro_mes"] = meses[idx + 1]
         st.rerun()
 
-    # Os campos agora estão amarrados à memória da sessão usando a propriedade 'key'
+    # --- 3. WIDGETS CONTROLADOS EXCLUSIVAMENTE PELA SESSÃO ---
+    # (Sem os parâmetros 'index' e 'value' para evitar resets indesejados)
     mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses, key="filtro_mes")
-    ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, key="filtro_ano")
+    ano_sel = st.sidebar.number_input("Ano de Trabalho", min_value=2020, max_value=2100, step=1, key="filtro_ano")
     
+    # --- 4. CÁLCULO DAS VARIÁVEIS DE TEMPO ---
     idx_mes = meses.index(mes_sel) + 1
     str_inicio = f"{ano_sel}-{idx_mes:02d}-01"
     str_fim = f"{ano_sel if idx_mes < 12 else ano_sel+1}-{idx_mes+1 if idx_mes < 12 else 1:02d}-01"
