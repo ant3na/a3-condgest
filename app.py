@@ -10,7 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from datetime import datetime, date
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_
 from io import BytesIO
 
 # Importações limpas e completas dos nossos módulos refatorados
@@ -1193,6 +1193,15 @@ def pagina_condominos():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
     st.header(":material/group: Gestão de Condóminos")
     
+    # --- NOVO: Campo de Pesquisa Ativa na Sidebar ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Procurar Morador")
+    pesquisa_termo = st.sidebar.text_input(
+        "Fração ou Nome do Proprietário:", 
+        placeholder="Ex: 2º Esq",
+        key=f"sidebar_search_cond_{st.session_state.form_key}"
+    ).strip().lower()
+    
     if not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
         with st.expander(":material/upload_file: Importar Moradores via Excel/CSV"):
             st.write("Faça upload de um ficheiro CSV ou Excel contendo as seguintes colunas (exatamente com estes nomes): `Nome,Fração,NIF,Telefone,Email,Permilagem`.")
@@ -1235,7 +1244,17 @@ def pagina_condominos():
                     except Exception as e:
                         st.error(f"Erro ao processar o ficheiro. Detalhe técnico: {e}")
     
-    conds = session.query(Condomino).all()
+    # Aplica o filtro de texto diretamente à query SQL (case-insensitive parcial)
+    query_conds = session.query(Condomino)
+    if pesquisa_termo:
+        query_conds = query_conds.filter(
+            or_(
+                func.lower(Condomino.fracao).like(f"%{pesquisa_termo}%"),
+                func.lower(Condomino.nome).like(f"%{pesquisa_termo}%")
+            )
+        )
+    conds = query_conds.all()
+    
     total_permilagem = session.query(func.sum(Condomino.permilagem)).scalar() or 0.0
     col_kpi1, col_kpi2 = st.columns([3, 1])
     col_kpi1.info(f"Permilagem Total Registada: **{total_permilagem:.2f} / 1000**")
@@ -1294,7 +1313,7 @@ def pagina_condominos():
                         session.delete(cond_obj); session.commit()
                         registar_auditoria("APAGAR", "Condóminos", f"Apagou o registo físico da fração {f_info}.")
                         st.session_state.toast = ("Registo apagado!", "🗑️"); st.rerun()
-    else: st.info("Ainda não existem condóminos registados.")
+    else: st.info("Ainda não existem condóminos registados ou encontrados para a pesquisa.")
 
 def pagina_quotas():
     mes_sel, ano_sel, str_inicio, str_fim, mes_str = configurar_sidebar()
@@ -1501,16 +1520,41 @@ def pagina_financas():
                                     st.error(f"Erro ao processar o ficheiro: {e}")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        movs = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim)).all()
+        
+        # --- NOVO: Filtro Contextual Inteligente na Sidebar ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📈 Tipo de Fluxo")
+        filtro_fin = st.sidebar.selectbox(
+            "Filtrar Extrato:",
+            ["Todos os Movimentos", "💸 Apenas Despesas", "💰 Apenas Receitas"],
+            key=f"sidebar_filter_fin_{st.session_state.form_key}"
+        )
+
+        movs_query = session.query(Movimento).filter(and_(Movimento.data >= str_inicio, Movimento.data < str_fim))
+        
         q_ant = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento < str_inicio)).scalar() or 0.0
         rec_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Receita", Movimento.data < str_inicio)).scalar() or 0.0
         desp_ant = session.query(func.sum(Movimento.valor)).filter(and_(Movimento.tipo == "Despesa", Movimento.data < str_inicio)).scalar() or 0.0
         saldo_anterior = (q_ant + rec_ant) - desp_ant
+        
         q_atual = session.query(func.sum(Quota.valor)).filter(and_(Quota.paga == True, Quota.data_pagamento >= str_inicio, Quota.data_pagamento < str_fim)).scalar() or 0.0
 
-        extrato_data = [{"ID": "-", "Data": "-", "Tipo": "Receita (Quotas)", "Descrição": "Soma Quotas Mensais", "Valor": q_atual}]
-        if movs: extrato_data.extend([{"ID": m.id, "Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in movs])
-        df_extrato = pd.DataFrame(extrato_data)
+        extrato_data = []
+        if "Despesas" not in filtro_fin:
+            if q_atual > 0 or filtro_fin == "Todos os Movimentos":
+                extrato_data.append({"ID": "-", "Data": "-", "Tipo": "Receita (Quotas)", "Descrição": "Soma Quotas Mensais", "Valor": q_atual})
+        
+        if "Despesas" in filtro_fin:
+            movs = movs_query.filter(Movimento.tipo == "Despesa").all()
+        elif "Receitas" in filtro_fin:
+            movs = movs_query.filter(Movimento.tipo == "Receita").all()
+        else:
+            movs = movs_query.all()
+
+        if movs: 
+            extrato_data.extend([{"ID": m.id, "Data": m.data, "Tipo": m.tipo, "Descrição": m.descricao, "Valor": m.valor} for m in movs])
+        
+        df_extrato = pd.DataFrame(extrato_data) if extrato_data else pd.DataFrame(columns=["ID", "Data", "Tipo", "Descrição", "Valor"])
 
         col_tit, col_btn = st.columns([3, 1])
         with col_tit:
@@ -1519,11 +1563,11 @@ def pagina_financas():
             st.write(f"**(+) Total Quotas Recebidas no Mês:** {q_atual:.2f} €")
         with col_btn:
             st.markdown("<br>", unsafe_allow_html=True)
-            if REPORTLAB_INSTALLED:
+            if REPORTLAB_INSTALLED and not df_extrato.empty:
                 pdf_bytes = gerar_pdf_extrato(df_extrato, mes_sel, ano_sel, saldo_anterior)
                 if pdf_bytes: st.download_button(":material/picture_as_pdf: Exportar PDF (Mês)", data=pdf_bytes, file_name=f"Extrato_{mes_sel}_{ano_sel}.pdf", mime="application/pdf", width="stretch")
         
-        if movs or q_atual > 0:
+        if not df_extrato.empty:
             with st.container(border=True):
                 evento_fin = st.dataframe(df_extrato, width="stretch", hide_index=True, column_config={"ID": None, "Valor": st.column_config.NumberColumn("Valor (€)", format="%.2f €")}, on_select="rerun", selection_mode="single-row")
             if evento_fin.selection.rows and not st.session_state.modo_leitura and st.session_state.perfil == "Admin":
@@ -1898,6 +1942,15 @@ def pagina_ocorrencias():
     # TAB 1: OCORRÊNCIAS REPORTADAS (Reativo)
     # ==========================================
     with tab_ocorrencias:
+        # --- NOVO: Filtro Contextual Inteligente na Sidebar ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🛠️ Estado da Ocorrência")
+        filtro_oc = st.sidebar.radio(
+            "Visualizar:",
+            ["Todas", "🔴 Pendentes", "✅ Resolvidas"],
+            key=f"sidebar_filter_oc_{st.session_state.form_key}"
+        )
+
         if not st.session_state.modo_leitura:
             with st.expander(":material/add_alert: Registar Nova Ocorrência"):
                 with st.form("f_oc"):
@@ -1930,7 +1983,16 @@ def pagina_ocorrencias():
                             st.session_state.toast = ("Ocorrência registada com sucesso!", "✅")
                             st.session_state.form_key += 1; st.rerun()
 
-        ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim)).all()
+        query_ocs = session.query(Ocorrencia).filter(and_(Ocorrencia.data_criacao >= str_inicio, Ocorrencia.data_criacao < str_fim))
+        
+        # Aplica o filtro da barra lateral dinamicamente à query SQL
+        if "Pendentes" in filtro_oc:
+            query_ocs = query_ocs.filter(Ocorrencia.resolvida == False)
+        elif "Resolvidas" in filtro_oc:
+            query_ocs = query_ocs.filter(Ocorrencia.resolvida == True)
+            
+        ocs = query_ocs.all()
+        
         if ocs:
             with st.container(border=True):
                 df_ocs = pd.DataFrame([{"ID": o.id, "Data": o.data_criacao, "Utilizador": o.criado_por if o.criado_por else "N/D", "Estado": "✅ Resolvido" if o.resolvida else "🔴 Pendente", "Assunto": o.titulo} for o in ocs])
@@ -1963,7 +2025,7 @@ def pagina_ocorrencias():
                             session.delete(oc_obj); session.commit()
                             registar_auditoria("APAGAR", "Ocorrências", f"Apagou o registo da ocorrência '{oc_tit}'.")
                             st.session_state.toast = ("Ocorrência apagada!", "🗑️"); st.rerun()
-        else: st.info("Nenhuma ocorrência registada neste período.")
+        else: st.info("Nenhuma ocorrência encontrada com o filtro atual.")
 
     # ==========================================
     # TAB 2: MANUTENÇÃO PREVENTIVA (Proativo)
