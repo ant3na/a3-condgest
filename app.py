@@ -2290,6 +2290,9 @@ def pagina_configuracoes():
                             with open("logo.png", "wb") as f:
                                 f.write(up_logo.getbuffer())
                             registar_auditoria("ATUALIZAR", "Configurações", "Alterou o logótipo oficial do sistema.")
+                            
+                            # LIMPEZA DO WIDGET DE UPLOAD
+                            del st.session_state["cfg_up_logo"]
                             st.rerun()
                             
                 with c_bg:
@@ -2310,6 +2313,9 @@ def pagina_configuracoes():
                             with open("bg_login.png", "wb") as f:
                                 f.write(up_bg.getbuffer())
                             registar_auditoria("ATUALIZAR", "Configurações", "Alterou a imagem de fundo do ecrã de login.")
+                            
+                            # LIMPEZA DO WIDGET DE UPLOAD
+                            del st.session_state["cfg_up_bg"]
                             st.rerun()
                         
         with tab_avisos:
