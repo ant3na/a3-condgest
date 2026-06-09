@@ -2265,7 +2265,7 @@ def pagina_configuracoes():
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # --- PAINEL DE BRANDING COM OPÇÃO DE REMOÇÃO TOTAL ---
+            # --- PAINEL DE BRANDING COM RESET REAL DE COMPONENTES ---
             with st.container(border=True):
                 st.subheader("🎨 Identidade Visual & Branding")
                 st.write("Faça a gestão das imagens de marca do portal de condomínio.")
@@ -2284,15 +2284,16 @@ def pagina_configuracoes():
                     else:
                         st.caption("ℹ️ Nenhum logótipo configurado (ecrã em modo simples).")
                         
-                    up_logo = st.file_uploader("Carregar novo logótipo", type=["png", "jpg", "jpeg"], key="cfg_up_logo")
+                    # Mudança crítica: key agora é dinâmica com o form_key
+                    up_logo = st.file_uploader("Carregar novo logótipo", type=["png", "jpg", "jpeg"], key=f"cfg_up_logo_{st.session_state.form_key}")
                     if up_logo is not None:
                         if st.button("Aplicar Novo Logótipo", width="stretch", type="primary"):
                             with open("logo.png", "wb") as f:
                                 f.write(up_logo.getbuffer())
                             registar_auditoria("ATUALIZAR", "Configurações", "Alterou o logótipo oficial do sistema.")
                             
-                            # LIMPEZA DO WIDGET DE UPLOAD
-                            del st.session_state["cfg_up_logo"]
+                            # Força a destruição do widget antigo incrementando o form_key
+                            st.session_state.form_key += 1
                             st.rerun()
                             
                 with c_bg:
@@ -2307,15 +2308,16 @@ def pagina_configuracoes():
                     else:
                         st.caption("ℹ️ Nenhuma imagem de fundo configurada (ecrã em modo simples).")
                         
-                    up_bg = st.file_uploader("Carregar nova imagem de login", type=["png", "jpg", "jpeg"], key="cfg_up_bg")
+                    # Mudança crítica: key agora é dinâmica com o form_key
+                    up_bg = st.file_uploader("Carregar nova imagem de login", type=["png", "jpg", "jpeg"], key=f"cfg_up_bg_{st.session_state.form_key}")
                     if up_bg is not None:
                         if st.button("Aplicar Novo Fundo de Login", width="stretch", type="primary"):
                             with open("bg_login.png", "wb") as f:
                                 f.write(up_bg.getbuffer())
                             registar_auditoria("ATUALIZAR", "Configurações", "Alterou a imagem de fundo do ecrã de login.")
                             
-                            # LIMPEZA DO WIDGET DE UPLOAD
-                            del st.session_state["cfg_up_bg"]
+                            # Força a destruição do widget antigo incrementando o form_key
+                            st.session_state.form_key += 1
                             st.rerun()
                         
         with tab_avisos:
