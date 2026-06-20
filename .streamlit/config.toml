@@ -1,6 +1,0 @@
-[theme]
-primaryColor = "#2563eb" # O teu azul principal (ex: botões primários)
-backgroundColor = "#f8fafc" # Um cinza muito claro para o fundo
-secondaryBackgroundColor = "#ffffff" # Branco puro para as barras laterais e painéis
-textColor = "#1e293b" # Texto num tom ardósia escuro para leitura confortável
-font = "sans serif"
